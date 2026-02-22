@@ -3,7 +3,15 @@ from pathlib import Path
 from _pytest.monkeypatch import MonkeyPatch
 
 from bot.app import create_container
-from services import PairingService, TicketService, TournamentService
+from services import (
+    AccessControlService,
+    NotificationService,
+    PairingService,
+    RegistrationService,
+    ScoringService,
+    TicketService,
+    TournamentService,
+)
 
 
 def test_create_container_wires_dependencies(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
@@ -19,5 +27,9 @@ def test_create_container_wires_dependencies(tmp_path: Path, monkeypatch: Monkey
     assert container.config.admin_ids == [10]
     assert container.config.arbitrs_ids == [20]
     assert isinstance(container.tournament_service, TournamentService)
+    assert isinstance(container.registration_service, RegistrationService)
     assert isinstance(container.pairing_service, PairingService)
+    assert isinstance(container.scoring_service, ScoringService)
     assert isinstance(container.ticket_service, TicketService)
+    assert isinstance(container.notification_service, NotificationService)
+    assert isinstance(container.access_control_service, AccessControlService)

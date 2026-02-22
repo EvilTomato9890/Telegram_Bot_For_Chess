@@ -1,5 +1,21 @@
 """Service layer package."""
 
-from .contracts import PairingService, TicketService, TournamentService
+from .contracts import (
+    AccessControlService,
+    NotificationService,
+    PairingService,
+    RegistrationService,
+    ScoringService,
+    TicketService,
+    TournamentService,
+)
 
-__all__ = ["TournamentService", "PairingService", "TicketService"]
+__all__ = [
+    "TournamentService",
+    "RegistrationService",
+    "PairingService",
+    "ScoringService",
+    "TicketService",
+    "NotificationService",
+    "AccessControlService",
+]

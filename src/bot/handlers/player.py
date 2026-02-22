@@ -33,6 +33,13 @@ class PlayerRegistration(StatesGroup):
     waiting_for_name = State()
 
 
+def _normalize_username(value: str | None) -> str | None:
+    if value is None:
+        return None
+    username = value.strip().lstrip("@").lower()
+    return username or None
+
+
 async def _get_current_tournament(session: AsyncSession) -> Tournament | None:
     result = await session.execute(
         select(Tournament)
@@ -237,6 +244,7 @@ async def player_register_name(
         player = Player(
             tournament_id=tournament.id,
             telegram_id=user.id,
+            username=_normalize_username(user.username),
             display_name=display_name,
             score=0.0,
             buchholz=0.0,

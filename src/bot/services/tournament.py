@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, Sequence
 
 if TYPE_CHECKING:
     from bot.db.repositories import PlayerRepository, TournamentRepository
@@ -52,8 +52,8 @@ class TournamentService:
 
     def assign_tables(
         self,
-        pairings: list[tuple[int, int | None]],
-        tables: list[TableLike],
+        pairings: Sequence[tuple[int, int | None]],
+        tables: Sequence[TableLike],
     ) -> list[PairingAssignment]:
         """Assign sequential board numbers and table ids to non-bye pairings."""
         games = [(white_id, black_id) for white_id, black_id in pairings if black_id is not None]

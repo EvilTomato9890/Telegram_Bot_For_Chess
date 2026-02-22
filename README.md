@@ -33,3 +33,13 @@ Optional variables:
 ## Assumptions
 
 The project relies on explicit product assumptions for tournament lifecycle, command validation, result handling, and ticket load balancing. A full normative description is maintained in [`docs/assumptions.md`](docs/assumptions.md).
+
+## Database bootstrap
+
+Initial schema migrations are stored in `repositories/migrations/`.
+
+Initialize DB (SQLite):
+
+```bash
+python -m repositories.schema.init_db sqlite:///data/tournament.db
+```

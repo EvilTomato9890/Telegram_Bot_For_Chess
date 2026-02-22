@@ -13,7 +13,9 @@ from aiogram.types import ErrorEvent
 from loguru import logger
 
 from bot.config import get_settings
+from bot.db.engine import create_engine
 from bot.db.migrations import initialize_database
+from bot.db.session import build_session_factory
 from bot.handlers.organizer import router as organizer_router
 from bot.handlers.player import router as player_router
 from bot.logging import configure_logger
@@ -48,10 +50,13 @@ async def run() -> None:
     configure_logger(settings.log_level)
 
     await initialize_database(settings.database_url)
+    engine = create_engine(settings.database_url)
+    session_factory = build_session_factory(engine)
 
     acl = AccessControlService(admin_ids=set(settings.admin_ids))
     bot = Bot(token=settings.token)
     dispatcher = build_dispatcher(acl=acl)
+    dispatcher["session_factory"] = session_factory
 
     logger.info("Starting bot polling")
     await dispatcher.start_polling(bot)

@@ -20,6 +20,7 @@ class GameRepository(Repository):
         white_player_id: int,
         black_player_id: int | None,
         table_id: int | None = None,
+        seat: str | None = None,
     ) -> Game:
         entity = Game(
             round_id=round_id,
@@ -27,6 +28,7 @@ class GameRepository(Repository):
             white_player_id=white_player_id,
             black_player_id=black_player_id,
             table_id=table_id,
+            seat=seat,
         )
         self._session.add(entity)
         await self._session.commit()

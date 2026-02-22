@@ -111,6 +111,7 @@ class Game(Base):
     round_id: Mapped[int] = mapped_column(ForeignKey("rounds.id", ondelete="CASCADE"), nullable=False)
     board_no: Mapped[int] = mapped_column(Integer, nullable=False)
     table_id: Mapped[int | None] = mapped_column(ForeignKey("tables.id", ondelete="SET NULL"), nullable=True)
+    seat: Mapped[str | None] = mapped_column(String(32), nullable=True)
     white_player_id: Mapped[int] = mapped_column(ForeignKey("players.id", ondelete="RESTRICT"), nullable=False)
     black_player_id: Mapped[int | None] = mapped_column(ForeignKey("players.id", ondelete="RESTRICT"), nullable=True)
     result: Mapped[GameResult | None] = mapped_column(Enum(GameResult, native_enum=False), nullable=True)

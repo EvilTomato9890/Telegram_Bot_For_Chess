@@ -65,6 +65,7 @@ def upgrade() -> None:
         sa.Column("round_id", sa.Integer(), sa.ForeignKey("rounds.id", ondelete="CASCADE"), nullable=False),
         sa.Column("board_no", sa.Integer(), nullable=False),
         sa.Column("table_id", sa.Integer(), sa.ForeignKey("tables.id", ondelete="SET NULL"), nullable=True),
+        sa.Column("seat", sa.String(length=32), nullable=True),
         sa.Column("white_player_id", sa.Integer(), sa.ForeignKey("players.id", ondelete="RESTRICT"), nullable=False),
         sa.Column("black_player_id", sa.Integer(), sa.ForeignKey("players.id", ondelete="RESTRICT"), nullable=True),
         sa.Column("result", sa.Enum("WHITE_WIN", "BLACK_WIN", "DRAW", "BYE", name="gameresult", native_enum=False), nullable=True),

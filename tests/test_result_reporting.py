@@ -84,6 +84,16 @@ def test_report_conflict_notifies_players_and_allows_overwrite() -> None:
     assert game.result == "1-0"
 
 
+def test_agreement_clears_stored_reports_for_game() -> None:
+    service, _, _ = _build_service()
+
+    service.submit_report(player_id=10, result="1-0")
+    service.submit_report(player_id=20, result="1-0")
+
+    next_report = service.submit_report(player_id=10, result="0-1")
+    assert next_report.status == "pending"
+
+
 def test_player_can_report_only_own_current_or_last_game() -> None:
     service, _, _ = _build_service()
 

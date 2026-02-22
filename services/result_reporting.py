@@ -44,26 +44,28 @@ class ResultReportingService:
         normalized_result = self._scoring_service.validate_result(result)
         game = self._resolve_current_or_last_game(player_id)
 
-        reports = self._reports_by_game.setdefault(self._require_game_id(game), {})
+        game_id = self._require_game_id(game)
+        reports = self._reports_by_game.setdefault(game_id, {})
         reports[player_id] = normalized_result
 
         opponent_id = self._opponent_id(game, player_id)
         opponent_report = reports.get(opponent_id)
         if opponent_report is None:
             return ReportResolution(
-                game_id=self._require_game_id(game),
+                game_id=game_id,
                 status="pending",
                 message="report saved; waiting for opponent report",
             )
 
         if opponent_report == normalized_result:
-            self._scoring_service.submit_result(self._require_game_id(game), normalized_result)
+            self._scoring_service.submit_result(game_id, normalized_result)
+            self._reports_by_game.pop(game_id, None)
             self._notification_service.notify(
-                f"Game {self._require_game_id(game)} result agreed by players: {normalized_result}."
+                f"Game {game_id} result agreed by players: {normalized_result}."
             )
             self._notify_organizers_if_round_closed(game.round_id)
             return ReportResolution(
-                game_id=self._require_game_id(game),
+                game_id=game_id,
                 status="agreed",
                 message="reports matched, result applied",
             )
@@ -74,7 +76,7 @@ class ResultReportingService:
             f"{self._require_game_id(game)}. Please repeat /report or call an arbiter via /approve_result."
         )
         return ReportResolution(
-            game_id=self._require_game_id(game),
+            game_id=game_id,
             status="conflict",
             message="reports conflict; players have been notified",
         )

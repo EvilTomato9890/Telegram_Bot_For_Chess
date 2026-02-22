@@ -19,6 +19,7 @@ COMMAND_ACCESS_MATRIX: dict[Command, frozenset[Role]] = {
     "/create_tournament": frozenset({"admin"}),
     "/set_status": frozenset({"admin"}),
     "/pairings": frozenset({"admin", "arbiter"}),
+    "/report": frozenset({"player", "arbiter", "admin"}),
     "/report_result": frozenset({"admin", "arbiter"}),
     "/approve_result": frozenset({"admin", "arbiter"}),
     "/register": frozenset({"player", "arbiter", "admin"}),

@@ -7,6 +7,7 @@ from datetime import datetime
 from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
+from loguru import logger
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
@@ -56,7 +57,10 @@ async def _resolve_telegram_id(
     session: AsyncSession,
 ) -> tuple[int | None, str | None]:
     token = identifier.strip()
+    logger.trace("Resolving telegram_id from identifier='{}'", token)
+
     if token.isdigit():
+        logger.trace("Identifier is numeric telegram_id={}", token)
         return int(token), None
 
     if not token.startswith("@"):
@@ -74,6 +78,11 @@ async def _resolve_telegram_id(
     )
     existing_player = existing_result.scalars().first()
     if existing_player is not None:
+        logger.debug(
+            "Resolved telegram_id={} from stored player username @{}",
+            existing_player.telegram_id,
+            username,
+        )
         return int(existing_player.telegram_id), None
 
     bot = message.bot
@@ -83,8 +92,10 @@ async def _resolve_telegram_id(
     try:
         chat = await bot.get_chat(chat_id=f"@{username}")
     except Exception:
+        logger.warning("Failed to resolve @{} via bot.get_chat", username)
         return None, "Не удалось определить telegram_id по username. Укажите числовой telegram_id."
 
+    logger.debug("Resolved telegram_id={} from bot.get_chat for @{}", chat.id, username)
     return int(chat.id), None
 
 

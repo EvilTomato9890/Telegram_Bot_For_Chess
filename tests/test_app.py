@@ -8,6 +8,7 @@ from services import (
     NotificationService,
     PairingService,
     RegistrationService,
+    ResultReportingService,
     ScoringService,
     TicketService,
     TournamentService,
@@ -30,6 +31,7 @@ def test_create_container_wires_dependencies(tmp_path: Path, monkeypatch: Monkey
     assert isinstance(container.registration_service, RegistrationService)
     assert isinstance(container.pairing_service, PairingService)
     assert isinstance(container.scoring_service, ScoringService)
+    assert isinstance(container.result_reporting_service, ResultReportingService)
     assert isinstance(container.ticket_service, TicketService)
     assert isinstance(container.notification_service, NotificationService)
     assert isinstance(container.access_control_service, AccessControlService)

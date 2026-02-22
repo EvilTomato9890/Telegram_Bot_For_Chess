@@ -27,6 +27,9 @@ class GameRepository:
     def get(self, game_id: int) -> Game | None:
         return self._games.get(game_id)
 
+    def list_all(self) -> list[Game]:
+        return list(self._games.values())
+
     def update(self, game: Game) -> Game:
         if game.id is None:
             raise ValueError("game.id is required for update")

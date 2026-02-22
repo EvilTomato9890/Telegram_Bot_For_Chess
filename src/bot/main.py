@@ -32,7 +32,7 @@ def build_dispatcher(acl: AccessControlService) -> Dispatcher:
     @root_router.error()
     async def on_error(event: ErrorEvent) -> bool:
         """Handle unexpected exceptions with friendly text + detailed logs."""
-        logger.exception("Unhandled exception while processing update", exc_info=event.exception)
+        logger.opt(exception=event.exception).error("Unhandled exception while processing update")
         if event.update.message is not None:
             await event.update.message.answer(
                 "Произошла внутренняя ошибка. Мы уже записали проблему в лог и скоро исправим её."

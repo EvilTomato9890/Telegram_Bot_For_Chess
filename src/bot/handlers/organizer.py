@@ -2,17 +2,33 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
-from sqlalchemy import and_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.orm import selectinload
 
 from bot.db.models import Game, Player, Round, Table, Tournament
-from bot.domain.enums import PlayerStatus, TournamentStatus
+from bot.domain.enums import GameResult, GameStatus, PlayerStatus, RoundStatus, TournamentStatus
+from bot.domain.swiss import swiss_pairings
+from bot.domain.tiebreaks import MatchRecord, calculate_buchholz, calculate_sonneborn_berger
+from bot.domain.validators import InvariantViolationError, validate_can_finish_tournament, validate_can_generate_round
 from bot.services.acl import AccessControlService
+from bot.services.tournament import InsufficientTablesError, TournamentService
+from bot.utils.formatting import format_points
 
 router = Router(name="organizer")
+
+
+def _format_result(result: GameResult | None) -> str:
+    if result is None:
+        return "-"
+    if result == GameResult.DRAW:
+        return "0.5-0.5"
+    return result.value
 
 
 async def _get_current_tournament(session) -> Tournament | None:
@@ -49,6 +65,63 @@ async def _resolve_telegram_id(message: Message, identifier: str) -> tuple[int |
     return int(chat.id), None
 
 
+async def _recalculate_scores_and_tiebreaks(session, tournament_id: int) -> None:
+    players_result = await session.execute(select(Player).where(Player.tournament_id == tournament_id))
+    players = list(players_result.scalars().all())
+    by_id = {player.id: player for player in players}
+
+    for player in players:
+        player.score = 0.0
+        player.buchholz = 0.0
+        player.sonneborn_berger = 0.0
+        player.median_buchholz = 0.0
+
+    games_result = await session.execute(
+        select(Game)
+        .join(Round, Round.id == Game.round_id)
+        .where(Round.tournament_id == tournament_id, Game.status == GameStatus.FINISHED)
+        .order_by(Round.number.asc(), Game.board_no.asc())
+    )
+    games = list(games_result.scalars().all())
+
+    matches: list[MatchRecord] = []
+    for game in games:
+        white = by_id.get(game.white_player_id)
+        if white is None:
+            continue
+
+        black = by_id.get(game.black_player_id) if game.black_player_id is not None else None
+
+        if game.result == GameResult.WHITE_WIN or game.result == GameResult.BYE:
+            white_score = 1.0
+            black_score = 0.0
+        elif game.result == GameResult.BLACK_WIN:
+            white_score = 0.0
+            black_score = 1.0
+        elif game.result == GameResult.DRAW:
+            white_score = 0.5
+            black_score = 0.5
+        else:
+            continue
+
+        white.score += white_score
+        matches.append(MatchRecord(player_id=white.id, opponent_id=black.id if black else None, score=white_score))
+
+        if black is not None:
+            black.score += black_score
+            matches.append(MatchRecord(player_id=black.id, opponent_id=white.id, score=black_score))
+
+    points = {player.id: player.score for player in players}
+    buchholz = calculate_buchholz(points, matches)
+    sonneborn = calculate_sonneborn_berger(points, matches)
+
+    for player in players:
+        player.buchholz = float(buchholz.get(player.id, 0.0))
+        player.sonneborn_berger = float(sonneborn.get(player.id, 0.0))
+
+    await session.commit()
+
+
 @router.message(Command("organizer"))
 async def organizer_help(message: Message, acl: AccessControlService) -> None:
     """Show organizer panel command hints if the user has required rights."""
@@ -66,6 +139,12 @@ async def organizer_help(message: Message, acl: AccessControlService) -> None:
                 "/tables",
                 "/add_table <номер> <локация>",
                 "/remove_table <номер>",
+                "/set_rules <текст>",
+                "/start_tournament <rounds_count>",
+                "/next_round",
+                "/round <n>",
+                "/approve_result <game_id>",
+                "/finish_tournament",
             ]
         )
     )
@@ -293,3 +372,400 @@ async def remove_table(
         await session.commit()
 
     await message.answer(f"🗑 Стол {number} удален.")
+
+
+@router.message(Command("set_rules"))
+async def set_rules(
+    message: Message,
+    command: CommandObject,
+    acl: AccessControlService,
+    session_factory: async_sessionmaker,
+) -> None:
+    if not _is_organizer(message, acl):
+        await message.answer("У вас нет прав организатора для этой команды.")
+        return
+
+    rules_text = (command.args or "").strip()
+    if not rules_text:
+        await message.answer("Формат: /set_rules <текст>")
+        return
+
+    async with session_factory() as session:
+        tournament = await _get_current_tournament(session)
+        if tournament is None:
+            await message.answer("Нет активного или чернового турнира.")
+            return
+
+        tournament.rules_text = rules_text
+        await session.commit()
+
+    await message.answer("✅ Регламент турнира обновлен.")
+
+
+@router.message(Command("start_tournament"))
+async def start_tournament(
+    message: Message,
+    command: CommandObject,
+    acl: AccessControlService,
+    session_factory: async_sessionmaker,
+) -> None:
+    if not _is_organizer(message, acl):
+        await message.answer("У вас нет прав организатора для этой команды.")
+        return
+
+    if command.args is None or not command.args.strip().isdigit():
+        await message.answer("Формат: /start_tournament <rounds_count>")
+        return
+
+    rounds_count = int(command.args.strip())
+    if rounds_count <= 0:
+        await message.answer("Количество туров должно быть положительным числом.")
+        return
+
+    async with session_factory() as session:
+        active_result = await session.execute(
+            select(Tournament).where(Tournament.status == TournamentStatus.ACTIVE).order_by(Tournament.id.desc())
+        )
+        active_tournament = active_result.scalars().first()
+        if active_tournament is not None:
+            await message.answer("Уже есть активный турнир. Завершите его перед запуском нового.")
+            return
+
+        draft_result = await session.execute(
+            select(Tournament).where(Tournament.status == TournamentStatus.DRAFT).order_by(Tournament.id.desc())
+        )
+        tournament = draft_result.scalars().first()
+        if tournament is None:
+            tournament = Tournament(rounds_count=rounds_count, status=TournamentStatus.ACTIVE)
+            session.add(tournament)
+        else:
+            tournament.rounds_count = rounds_count
+            tournament.status = TournamentStatus.ACTIVE
+
+        await session.commit()
+        await session.refresh(tournament)
+
+    await message.answer(f"✅ Турнир #{tournament.id} запущен. Количество туров: {tournament.rounds_count}.")
+
+
+@router.message(Command("next_round"))
+async def next_round(message: Message, acl: AccessControlService, session_factory: async_sessionmaker) -> None:
+    if not _is_organizer(message, acl):
+        await message.answer("У вас нет прав организатора для этой команды.")
+        return
+
+    async with session_factory() as session:
+        tournament_result = await session.execute(
+            select(Tournament).where(Tournament.status == TournamentStatus.ACTIVE).order_by(Tournament.id.desc())
+        )
+        tournament = tournament_result.scalars().first()
+        if tournament is None:
+            await message.answer("Нет активного турнира. Используйте /start_tournament.")
+            return
+
+        if tournament.current_round >= tournament.rounds_count:
+            await message.answer("Достигнуто максимальное число туров. Завершите турнир командой /finish_tournament.")
+            return
+
+        current_round = None
+        if tournament.current_round > 0:
+            current_round_result = await session.execute(
+                select(Round).where(
+                    Round.tournament_id == tournament.id,
+                    Round.number == tournament.current_round,
+                )
+            )
+            current_round = current_round_result.scalars().first()
+
+        try:
+            validate_can_generate_round(current_round_status=current_round.status if current_round else None)
+        except InvariantViolationError:
+            await message.answer("Нельзя генерировать следующий тур, пока текущий тур не закрыт.")
+            return
+
+        players_result = await session.execute(
+            select(Player)
+            .where(Player.tournament_id == tournament.id, Player.status != PlayerStatus.DISQUALIFIED)
+            .order_by(
+                Player.score.desc(),
+                Player.buchholz.desc(),
+                Player.sonneborn_berger.desc(),
+                Player.id.asc(),
+            )
+        )
+        players = list(players_result.scalars().all())
+        if len(players) < 2:
+            await message.answer("Недостаточно участников для генерации тура.")
+            return
+
+        history_result = await session.execute(
+            select(Game.white_player_id, Game.black_player_id)
+            .join(Round, Round.id == Game.round_id)
+            .where(
+                Round.tournament_id == tournament.id,
+                Game.black_player_id.is_not(None),
+            )
+        )
+        history = [(w, b) for w, b in history_result.all() if b is not None]
+
+        pairings = swiss_pairings(
+            [player.id for player in players],
+            scores={player.id: player.score for player in players},
+            history=history,
+            color_history={player.id: player.color_history for player in players},
+            had_bye={player.id for player in players if player.had_bye},
+        )
+
+        tables_result = await session.execute(select(Table).where(Table.is_active.is_(True)).order_by(Table.number.asc()))
+        tables = list(tables_result.scalars().all())
+        service = TournamentService(tournaments=None, players=None)
+        try:
+            assignments = service.assign_tables(pairings, tables)
+        except InsufficientTablesError as exc:
+            await message.answer(str(exc))
+            return
+
+        next_round_number = tournament.current_round + 1
+        round_entity = Round(tournament_id=tournament.id, number=next_round_number, status=RoundStatus.ACTIVE)
+        session.add(round_entity)
+        await session.flush()
+
+        assignment_by_pair = {(a.white_player_id, a.black_player_id): a for a in assignments}
+        board_no_for_bye = len(assignments) + 1
+
+        lines = [f"✅ Тур {next_round_number} сгенерирован:"]
+        for white_id, black_id in pairings:
+            if black_id is None:
+                bye_game = Game(
+                    round_id=round_entity.id,
+                    board_no=board_no_for_bye,
+                    white_player_id=white_id,
+                    black_player_id=None,
+                    result=GameResult.BYE,
+                    status=GameStatus.FINISHED,
+                    requires_approval=False,
+                )
+                session.add(bye_game)
+                white_player = next(player for player in players if player.id == white_id)
+                white_player.had_bye = True
+                lines.append(f"• {white_player.display_name} — BYE")
+                continue
+
+            assignment = assignment_by_pair[(white_id, black_id)]
+            game = Game(
+                round_id=round_entity.id,
+                board_no=assignment.board_no,
+                table_id=assignment.table_id,
+                white_player_id=white_id,
+                black_player_id=black_id,
+                status=GameStatus.PENDING,
+                requires_approval=False,
+            )
+            session.add(game)
+
+            white_player = next(player for player in players if player.id == white_id)
+            black_player = next(player for player in players if player.id == black_id)
+            white_player.color_history = f"{white_player.color_history}W"
+            black_player.color_history = f"{black_player.color_history}B"
+
+            table = next((item for item in tables if item.id == assignment.table_id), None)
+            location = table.location if table is not None and table.location else "локация не указана"
+            lines.append(
+                f"• Стол {assignment.board_no}: {white_player.display_name} (White) vs "
+                f"{black_player.display_name} (Black), {location}"
+            )
+
+        if current_round is not None and current_round.status != RoundStatus.FINISHED:
+            current_round.status = RoundStatus.FINISHED
+
+        tournament.current_round = next_round_number
+        await session.commit()
+
+        await _recalculate_scores_and_tiebreaks(session, tournament.id)
+
+    await message.answer("\n".join(lines))
+
+
+@router.message(Command("round"))
+async def show_round(
+    message: Message,
+    command: CommandObject,
+    acl: AccessControlService,
+    session_factory: async_sessionmaker,
+) -> None:
+    if not _is_organizer(message, acl):
+        await message.answer("У вас нет прав организатора для этой команды.")
+        return
+
+    if command.args is None or not command.args.strip().isdigit():
+        await message.answer("Формат: /round <n>")
+        return
+
+    round_number = int(command.args.strip())
+
+    async with session_factory() as session:
+        tournament = await _get_current_tournament(session)
+        if tournament is None:
+            await message.answer("Нет активного или чернового турнира.")
+            return
+
+        round_result = await session.execute(
+            select(Round).where(Round.tournament_id == tournament.id, Round.number == round_number)
+        )
+        round_entity = round_result.scalars().first()
+        if round_entity is None:
+            await message.answer("Тур с таким номером не найден.")
+            return
+
+        games_result = await session.execute(
+            select(Game)
+            .options(selectinload(Game.white_player), selectinload(Game.black_player), selectinload(Game.table))
+            .where(Game.round_id == round_entity.id)
+            .order_by(Game.board_no.asc())
+        )
+        games = list(games_result.scalars().all())
+
+    if not games:
+        await message.answer(f"В туре {round_number} пока нет партий.")
+        return
+
+    lines = [f"📋 Тур {round_number} ({round_entity.status.value}):"]
+    for game in games:
+        white = game.white_player.display_name if game.white_player is not None else "-"
+        if game.black_player_id is None:
+            lines.append(f"• {white} — BYE ({_format_result(game.result)})")
+            continue
+
+        black = game.black_player.display_name if game.black_player is not None else "-"
+        table_no = game.board_no
+        location = game.table.location if game.table is not None and game.table.location else "локация не указана"
+        lines.append(f"• Стол {table_no}: {white} vs {black} | результат: {_format_result(game.result)} | {location}")
+
+    await message.answer("\n".join(lines))
+
+
+@router.message(Command("approve_result"))
+async def approve_result(
+    message: Message,
+    command: CommandObject,
+    acl: AccessControlService,
+    session_factory: async_sessionmaker,
+) -> None:
+    if not _is_organizer(message, acl):
+        await message.answer("У вас нет прав организатора для этой команды.")
+        return
+
+    if command.args is None or not command.args.strip().isdigit():
+        await message.answer("Формат: /approve_result <game_id>")
+        return
+
+    game_id = int(command.args.strip())
+
+    async with session_factory() as session:
+        result = await session.execute(
+            select(Game)
+            .options(selectinload(Game.round))
+            .join(Round, Round.id == Game.round_id)
+            .join(Tournament, Tournament.id == Round.tournament_id)
+            .where(Game.id == game_id, Tournament.status.in_([TournamentStatus.ACTIVE, TournamentStatus.DRAFT]))
+        )
+        game = result.scalars().first()
+        if game is None:
+            await message.answer("Партия не найдена в текущем турнире.")
+            return
+
+        if game.black_player_id is None:
+            await message.answer("BYE-партия не требует подтверждения.")
+            return
+
+        if game.result is None:
+            await message.answer("У этой партии пока нет заявленного результата.")
+            return
+
+        if game.status == GameStatus.FINISHED and not game.requires_approval:
+            await message.answer("Результат уже утвержден.")
+            return
+
+        game.status = GameStatus.FINISHED
+        game.requires_approval = False
+
+        round_games_result = await session.execute(select(Game).where(Game.round_id == game.round_id))
+        round_games = list(round_games_result.scalars().all())
+        if round_games and all(item.status == GameStatus.FINISHED for item in round_games):
+            game.round.status = RoundStatus.FINISHED
+
+        await session.commit()
+
+        tournament_id = game.round.tournament_id
+        await _recalculate_scores_and_tiebreaks(session, tournament_id)
+
+    await message.answer("✅ Результат партии утвержден.")
+
+
+@router.message(Command("finish_tournament"))
+async def finish_tournament(
+    message: Message,
+    acl: AccessControlService,
+    session_factory: async_sessionmaker,
+) -> None:
+    if not _is_organizer(message, acl):
+        await message.answer("У вас нет прав организатора для этой команды.")
+        return
+
+    async with session_factory() as session:
+        tournament_result = await session.execute(
+            select(Tournament).where(Tournament.status == TournamentStatus.ACTIVE).order_by(Tournament.id.desc())
+        )
+        tournament = tournament_result.scalars().first()
+        if tournament is None:
+            await message.answer("Нет активного турнира для завершения.")
+            return
+
+        rounds_result = await session.execute(select(Round).where(Round.tournament_id == tournament.id))
+        rounds = list(rounds_result.scalars().all())
+
+        pending_games_result = await session.execute(
+            select(Game)
+            .join(Round, Round.id == Game.round_id)
+            .where(
+                Round.tournament_id == tournament.id,
+                or_(Game.status != GameStatus.FINISHED, and_(Game.status == GameStatus.FINISHED, Game.result.is_(None))),
+            )
+        )
+        has_pending_games = pending_games_result.scalars().first() is not None
+
+        try:
+            validate_can_finish_tournament(
+                tournament_status=tournament.status,
+                has_unfinished_rounds=any(item.status != RoundStatus.FINISHED for item in rounds),
+                has_pending_games=has_pending_games,
+            )
+        except InvariantViolationError as exc:
+            await message.answer(f"Нельзя завершить турнир: {exc}")
+            return
+
+        await _recalculate_scores_and_tiebreaks(session, tournament.id)
+
+        tournament.status = TournamentStatus.FINISHED
+        tournament.finished_at = datetime.utcnow()
+        await session.commit()
+
+        standings_result = await session.execute(
+            select(Player)
+            .where(Player.tournament_id == tournament.id)
+            .order_by(
+                Player.score.desc(),
+                Player.buchholz.desc(),
+                Player.sonneborn_berger.desc(),
+                Player.id.asc(),
+            )
+        )
+        standings = list(standings_result.scalars().all())
+
+    lines = ["🏁 Турнир завершен. Итоговая таблица:"]
+    for i, player in enumerate(standings[:10], start=1):
+        lines.append(
+            f"{i}. {player.display_name} — {format_points(player.score)} "
+            f"(BH {player.buchholz:.2f}, SB {player.sonneborn_berger:.2f})"
+        )
+    await message.answer("\n".join(lines))

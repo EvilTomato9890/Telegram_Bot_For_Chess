@@ -5,14 +5,16 @@ from __future__ import annotations
 from datetime import datetime
 
 from aiogram import Router
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import Command, CommandObject, CommandStart
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from bot.db.models import Game, Player, Round, Table, Tournament
-from bot.domain.enums import GameResult, GameStatus, TournamentStatus
+from bot.domain.enums import GameResult, GameStatus, PlayerStatus, TournamentStatus
 from bot.keyboards.common import main_menu_keyboard
 from bot.utils.formatting import format_points, format_round_game
 
@@ -25,6 +27,10 @@ _RESULT_MAP = {
     "0.5-0.5": GameResult.DRAW,
     "1/2-1/2": GameResult.DRAW,
 }
+
+
+class PlayerRegistration(StatesGroup):
+    waiting_for_name = State()
 
 
 async def _get_current_tournament(session: AsyncSession) -> Tournament | None:
@@ -47,6 +53,30 @@ def _format_datetime(value: datetime | None) -> str:
     if value is None:
         return "не задано"
     return value.strftime("%d.%m %H:%M")
+
+
+async def _send_tournament_current(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    async with session_factory() as session:
+        tournament = await _get_current_tournament(session)
+        if tournament is None:
+            await message.answer("Турнир пока не создан.")
+            return
+
+        result = await session.execute(
+            select(Round).where(Round.tournament_id == tournament.id).order_by(Round.number.asc())
+        )
+        rounds = list(result.scalars().all())
+
+    if not rounds:
+        await message.answer("Расписание туров пока не сформировано.")
+        return
+
+    lines = ["🗓 Расписание туров:"]
+    for round_item in rounds:
+        lines.append(
+            f"• Тур {round_item.number}: {_format_datetime(round_item.starts_at)} — {_format_datetime(round_item.ends_at)}"
+        )
+    await message.answer("\n".join(lines))
 
 
 @router.message(CommandStart())
@@ -137,26 +167,88 @@ async def player_next_game(message: Message, session_factory: async_sessionmaker
 
 @router.message(Command("schedule"))
 async def player_schedule(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
-    async with session_factory() as session:
-        tournament = await _get_current_tournament(session)
-        if tournament is None:
-            await message.answer("Турнир пока не создан.")
-            return
-        result = await session.execute(
-            select(Round).where(Round.tournament_id == tournament.id).order_by(Round.number.asc())
-        )
-        rounds = list(result.scalars().all())
+    await _send_tournament_current(message, session_factory)
 
-    if not rounds:
-        await message.answer("Расписание туров пока не сформировано.")
+
+@router.callback_query(lambda callback: callback.data == "tournament:current")
+async def player_tournament_current_callback(
+    callback: CallbackQuery,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    await callback.answer()
+    message = callback.message
+    if not isinstance(message, Message):
+        return
+    await _send_tournament_current(message, session_factory)
+
+
+@router.callback_query(lambda callback: callback.data == "player:register")
+async def player_register_callback(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    await callback.answer()
+    message = callback.message
+    if not isinstance(message, Message):
         return
 
-    lines = ["🗓 Расписание туров:"]
-    for round_item in rounds:
-        lines.append(
-            f"• Тур {round_item.number}: {_format_datetime(round_item.starts_at)} — {_format_datetime(round_item.ends_at)}"
+    async with session_factory() as session:
+        tournament = await _get_current_tournament(session)
+
+    if tournament is None or tournament.status != TournamentStatus.ACTIVE:
+        await state.clear()
+        await message.answer("Регистрация недоступна: сейчас нет активного турнира.")
+        return
+
+    await state.set_state(PlayerRegistration.waiting_for_name)
+    await message.answer("Введите ваше имя для регистрации в текущем турнире.")
+
+
+@router.message(PlayerRegistration.waiting_for_name)
+async def player_register_name(
+    message: Message,
+    state: FSMContext,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    user = message.from_user
+    if user is None:
+        await message.answer("Не удалось определить пользователя.")
+        return
+
+    display_name = message.text.strip() if message.text is not None else ""
+    if not display_name:
+        await message.answer("Имя не должно быть пустым. Введите имя еще раз.")
+        return
+
+    async with session_factory() as session:
+        tournament = await _get_current_tournament(session)
+        if tournament is None or tournament.status != TournamentStatus.ACTIVE:
+            await state.clear()
+            await message.answer("Регистрация недоступна: сейчас нет активного турнира.")
+            return
+
+        existing_player = await _get_player(session, tournament.id, user.id)
+        if existing_player is not None:
+            await state.clear()
+            await message.answer("Вы уже зарегистрированы в текущем турнире.")
+            return
+
+        player = Player(
+            tournament_id=tournament.id,
+            telegram_id=user.id,
+            display_name=display_name,
+            score=0.0,
+            buchholz=0.0,
+            sonneborn_berger=0.0,
+            median_buchholz=0.0,
+            status=PlayerStatus.REGISTERED,
         )
-    await message.answer("\n".join(lines))
+        session.add(player)
+        await session.commit()
+
+    await state.clear()
+    await message.answer(f"✅ Вы зарегистрированы как {display_name}.")
 
 
 @router.message(Command("my_score"))

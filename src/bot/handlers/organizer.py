@@ -7,7 +7,7 @@ from datetime import datetime
 from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
@@ -45,7 +45,16 @@ def _is_organizer(message: Message, acl: AccessControlService) -> bool:
     return user is not None and acl.is_organizer(user.id)
 
 
-async def _resolve_telegram_id(message: Message, identifier: str) -> tuple[int | None, str | None]:
+def _normalize_username(value: str) -> str | None:
+    username = value.strip().lstrip("@").lower()
+    return username or None
+
+
+async def _resolve_telegram_id(
+    message: Message,
+    identifier: str,
+    session: AsyncSession,
+) -> tuple[int | None, str | None]:
     token = identifier.strip()
     if token.isdigit():
         return int(token), None
@@ -53,9 +62,19 @@ async def _resolve_telegram_id(message: Message, identifier: str) -> tuple[int |
     if not token.startswith("@"):
         return None, "Укажите telegram_id числом или @username."
 
-    username = token[1:]
+    username = _normalize_username(token)
     if not username:
         return None, "Укажите telegram_id числом или @username."
+
+    existing_result = await session.execute(
+        select(Player)
+        .where(func.lower(Player.username) == username)
+        .order_by(Player.id.desc())
+        .limit(1)
+    )
+    existing_player = existing_result.scalars().first()
+    if existing_player is not None:
+        return int(existing_player.telegram_id), None
 
     bot = message.bot
     if bot is None:
@@ -217,19 +236,18 @@ async def add_player(
         await message.answer("Формат: /add_player <telegram_id|@username> <имя>")
         return
 
-    telegram_id, error_text = await _resolve_telegram_id(message, parts[0])
-    if error_text is not None or telegram_id is None:
-        await message.answer(error_text or "Не удалось определить telegram_id.")
-        return
-
     display_name = parts[1].strip()
     if not display_name:
         await message.answer("Имя участника не может быть пустым.")
         return
-
-    username = parts[0][1:] if parts[0].startswith("@") else None
+    username = _normalize_username(parts[0]) if parts[0].startswith("@") else None
 
     async with session_factory() as session:
+        telegram_id, error_text = await _resolve_telegram_id(message, parts[0], session)
+        if error_text is not None or telegram_id is None:
+            await message.answer(error_text or "Не удалось определить telegram_id.")
+            return
+
         tournament = await _get_current_tournament(session)
         if tournament is None:
             await message.answer("Нет активного или чернового турнира. Сначала создайте/запустите турнир.")
@@ -288,7 +306,11 @@ async def disqualify_player(
         if target.isdigit():
             player_query = player_query.where(Player.id == int(target))
         elif target.startswith("@"):
-            player_query = player_query.where(Player.username == target[1:])
+            username = _normalize_username(target)
+            if username is None:
+                await message.answer("Укажите player_id числом или @username.")
+                return
+            player_query = player_query.where(func.lower(Player.username) == username)
         else:
             await message.answer("Укажите player_id числом или @username.")
             return

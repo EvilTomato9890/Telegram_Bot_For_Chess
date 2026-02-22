@@ -59,7 +59,20 @@ async def run() -> None:
     dispatcher["session_factory"] = session_factory
 
     logger.info("Starting bot polling")
-    await dispatcher.start_polling(bot)
+    try:
+        await dispatcher.start_polling(
+            bot,
+            handle_signals=True,
+            close_bot_session=False,
+        )
+    except asyncio.CancelledError:
+        logger.info("Bot polling was cancelled, shutting down gracefully")
+        raise
+    finally:
+        logger.info("Stopping bot and closing resources")
+        await bot.session.close()
+        await engine.dispose()
+        logger.info("Shutdown complete")
 
 
 if __name__ == "__main__":

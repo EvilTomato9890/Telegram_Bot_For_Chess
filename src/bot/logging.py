@@ -8,17 +8,9 @@ from __future__ import annotations
 
 import logging
 import sys
+import logging
 
 from loguru import logger
-
-
-def _to_stdlib_level(level: str) -> int | str:
-    """Convert configured level to value accepted by stdlib logging."""
-    normalized = level.upper()
-    if normalized == "TRACE":
-        logging.addLevelName(5, "TRACE")
-        return 5
-    return normalized
 
 
 class _InterceptHandler(logging.Handler):
@@ -40,15 +32,12 @@ class _InterceptHandler(logging.Handler):
 
 def configure_logger(level: str) -> None:
     """Configure global Loguru logger for stdout with compact JSON-like context."""
-    normalized_level = level.upper()
-    stdlib_level = _to_stdlib_level(normalized_level)
-
     logging.root.handlers = [_InterceptHandler()]
-    logging.root.setLevel(stdlib_level)
+    logging.root.setLevel(level.upper())
     for logger_name in ("aiogram", "sqlalchemy", "alembic", "asyncio"):
         std_logger = logging.getLogger(logger_name)
         std_logger.handlers = [_InterceptHandler()]
-        std_logger.setLevel(stdlib_level)
+        std_logger.setLevel(level.upper())
         std_logger.propagate = False
 
     logger.remove()

@@ -6,7 +6,23 @@ from dataclasses import dataclass
 
 from infra.config import AppConfig, load_config
 from infra.logging import AuditLogger, setup_logging
-from services import PairingService, TicketService, TournamentService
+from repositories import (
+    GameRepository,
+    PlayerRepository,
+    RoundRepository,
+    TableRepository,
+    TicketRepository,
+    TournamentRepository,
+)
+from services import (
+    AccessControlService,
+    NotificationService,
+    PairingService,
+    RegistrationService,
+    ScoringService,
+    TicketService,
+    TournamentService,
+)
 
 
 @dataclass(slots=True)
@@ -16,8 +32,12 @@ class Container:
     config: AppConfig
     audit_logger: AuditLogger
     tournament_service: TournamentService
+    registration_service: RegistrationService
     pairing_service: PairingService
+    scoring_service: ScoringService
     ticket_service: TicketService
+    notification_service: NotificationService
+    access_control_service: AccessControlService
 
 
 @dataclass(slots=True)
@@ -40,12 +60,31 @@ def create_container() -> Container:
     config = load_config()
     audit_logger = setup_logging(level=config.log_level, audit_log_path=config.audit_log_path)
 
+    tournament_repository = TournamentRepository()
+    player_repository = PlayerRepository()
+    round_repository = RoundRepository()
+    table_repository = TableRepository()
+    game_repository = GameRepository()
+    ticket_repository = TicketRepository()
+
     return Container(
         config=config,
         audit_logger=audit_logger,
-        tournament_service=TournamentService(),
-        pairing_service=PairingService(),
-        ticket_service=TicketService(),
+        tournament_service=TournamentService(tournament_repository=tournament_repository),
+        registration_service=RegistrationService(
+            player_repository=player_repository,
+            tournament_repository=tournament_repository,
+        ),
+        pairing_service=PairingService(
+            tournament_repository=tournament_repository,
+            round_repository=round_repository,
+            table_repository=table_repository,
+            game_repository=game_repository,
+        ),
+        scoring_service=ScoringService(),
+        ticket_service=TicketService(ticket_repository=ticket_repository),
+        notification_service=NotificationService(),
+        access_control_service=AccessControlService(),
     )
 
 

@@ -1,5 +1,6 @@
 from handlers import HelpCommandHandler
 from services.access_control import AccessControlService
+import pytest
 
 
 def test_roles_resolved_from_config_and_db() -> None:
@@ -28,3 +29,8 @@ def test_help_aggregates_unique_commands_for_all_user_roles() -> None:
     assert response.count("/register") == 1
     assert "/pairings" in response
     assert "/help" in response
+
+
+def test_acl_matrix_roles_are_validated_on_service_init() -> None:
+    with pytest.raises(ValueError, match="role must be one of"):
+        AccessControlService(command_access_matrix={"/custom": {"owner"}})

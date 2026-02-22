@@ -30,8 +30,8 @@ def acl_required(command: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
             if not isinstance(actor_id, int):
                 raise ValueError("actor_id must be an integer")
 
-            access_control_service = cast(AccessControlService, getattr(self_obj, "_access_control_service", None))
-            if access_control_service is None:
+            access_control_service = getattr(self_obj, "_access_control_service", None)
+            if not isinstance(access_control_service, AccessControlService):
                 raise ValueError("handler does not provide access control service")
 
             if not access_control_service.can_execute(actor_id, command):

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Set as AbstractSet
 from dataclasses import dataclass
 
 from schemas import ServiceResponse
@@ -39,9 +39,9 @@ class AccessControlService:
     def __init__(
         self,
         *,
-        config_roles_by_user: Mapping[int, set[Role]] | None = None,
-        db_roles_by_user: Mapping[int, set[Role]] | None = None,
-        command_access_matrix: Mapping[Command, frozenset[Role]] | None = None,
+        config_roles_by_user: Mapping[int, AbstractSet[Role]] | None = None,
+        db_roles_by_user: Mapping[int, AbstractSet[Role]] | None = None,
+        command_access_matrix: Mapping[Command, AbstractSet[Role]] | None = None,
     ) -> None:
         self._config_roles_by_user: dict[int, set[Role]] = {
             user_id: {validate_role(role) for role in roles}
@@ -51,7 +51,11 @@ class AccessControlService:
             user_id: {validate_role(role) for role in roles}
             for user_id, roles in (db_roles_by_user or {}).items()
         }
-        self._command_access_matrix = dict(command_access_matrix or COMMAND_ACCESS_MATRIX)
+        source_matrix = command_access_matrix or COMMAND_ACCESS_MATRIX
+        self._command_access_matrix: dict[Command, frozenset[Role]] = {
+            command: frozenset(validate_role(role) for role in allowed_roles)
+            for command, allowed_roles in source_matrix.items()
+        }
 
     @classmethod
     def from_config(cls, *, admin_ids: list[int], arbitrs_ids: list[int]) -> AccessControlService:
@@ -84,7 +88,7 @@ class AccessControlService:
         normalized_role = validate_role(role)
         return normalized_role in self.resolve_roles(user_id).roles
 
-    def has_any_role(self, user_id: int, roles: set[Role]) -> bool:
+    def has_any_role(self, user_id: int, roles: AbstractSet[Role]) -> bool:
         normalized_roles = {validate_role(role) for role in roles}
         if not normalized_roles:
             return False
@@ -94,11 +98,11 @@ class AccessControlService:
         allowed_roles = self._command_access_matrix.get(command)
         if allowed_roles is None:
             return False
-        return self.has_any_role(user_id, set(allowed_roles))
+        return self.has_any_role(user_id, allowed_roles)
 
     def allowed_commands(self, user_id: int) -> list[Command]:
         return sorted(
             command
             for command, allowed_roles in self._command_access_matrix.items()
-            if self.has_any_role(user_id, set(allowed_roles))
+            if self.has_any_role(user_id, allowed_roles)
         )

@@ -15,6 +15,7 @@ from repositories import (
     TournamentRepository,
 )
 from schemas import ServiceResponse
+from validators import validate_role
 
 _VALID_RESULTS = {"1-0", "0-1", "0.5-0.5", "bye", "forfeit"}
 
@@ -33,7 +34,10 @@ class TournamentService:
         self._tournament_repository = tournament_repository
 
     def create(self, name: str) -> Tournament:
-        return self._tournament_repository.add(Tournament(id=None, name=name))
+        normalized_name = name.strip()
+        if not normalized_name:
+            raise ValueError("tournament name cannot be empty")
+        return self._tournament_repository.add(Tournament(id=None, name=normalized_name))
 
     def change_status(self, tournament_id: int, status: TournamentStatus) -> Tournament:
         tournament = self._require_tournament(tournament_id)
@@ -64,12 +68,22 @@ class RegistrationService:
         if tournament.status != TournamentStatus.REGISTRATION:
             raise ValueError("registration is available only in registration status")
 
+        if any(
+            player.telegram_user_id == telegram_user_id
+            for player in self._player_repository.list_by_tournament(tournament_id)
+        ):
+            raise ValueError("player is already registered in this tournament")
+
+        normalized_display_name = display_name.strip()
+        if not normalized_display_name:
+            raise ValueError("display_name cannot be empty")
+
         return self._player_repository.add(
             Player(
                 id=None,
                 tournament_id=tournament_id,
                 telegram_user_id=telegram_user_id,
-                display_name=display_name,
+                display_name=normalized_display_name,
             )
         )
 
@@ -90,14 +104,27 @@ class PairingService:
         self._game_repository = game_repository
 
     def create_round(self, tournament_id: int, number: int) -> Round:
+        if number <= 0:
+            raise ValueError("round number must be positive")
+
         tournament = self._tournament_repository.get(tournament_id)
         if tournament is None:
             raise ValueError("tournament not found")
         if tournament.status != TournamentStatus.ONGOING:
             raise ValueError("pairings can be generated only in ongoing status")
+
+        if any(round_.number == number for round_ in self._round_repository.list_by_tournament(tournament_id)):
+            raise ValueError("round with this number already exists")
+
         return self._round_repository.add(Round(id=None, tournament_id=tournament_id, number=number))
 
     def add_game(self, round_id: int, white_player_id: int, black_player_id: int) -> Game:
+        round_ = self._round_repository.get(round_id)
+        if round_ is None:
+            raise ValueError("round not found")
+        if white_player_id == black_player_id:
+            raise ValueError("players must be different")
+
         tables = self._table_repository.list_by_round(round_id)
         table_id = tables[0].id if tables else None
         return self._game_repository.add(
@@ -127,14 +154,21 @@ class TicketService:
         self._ticket_repository = ticket_repository
 
     def create_ticket(self, author_player_id: int, title: str, body: str) -> Ticket:
+        normalized_title = title.strip()
+        normalized_body = body.strip()
+        if not normalized_title:
+            raise ValueError("ticket title cannot be empty")
+        if not normalized_body:
+            raise ValueError("ticket body cannot be empty")
+
         return self._ticket_repository.add(
             Ticket(
                 id=None,
                 author_player_id=author_player_id,
                 ticket_type=TicketType.OTHER,
                 status=TicketStatus.OPEN,
-                title=title,
-                body=body,
+                title=normalized_title,
+                body=normalized_body,
             )
         )
 
@@ -162,18 +196,21 @@ class AccessControlService:
 
     def grant_role(self, actor_id: int, target_user_id: int, role: str) -> ServiceResponse:
         del actor_id
+        normalized_role = validate_role(role)
         roles = self._roles_by_user.setdefault(target_user_id, set())
-        roles.add(role)
-        return ServiceResponse(ok=True, message=f"role '{role}' granted to user {target_user_id}")
+        roles.add(normalized_role)
+        return ServiceResponse(ok=True, message=f"role '{normalized_role}' granted to user {target_user_id}")
 
     def revoke_role(self, actor_id: int, target_user_id: int, role: str) -> ServiceResponse:
         del actor_id
+        normalized_role = validate_role(role)
         roles = self._roles_by_user.setdefault(target_user_id, set())
-        roles.discard(role)
-        return ServiceResponse(ok=True, message=f"role '{role}' revoked for user {target_user_id}")
+        roles.discard(normalized_role)
+        return ServiceResponse(ok=True, message=f"role '{normalized_role}' revoked for user {target_user_id}")
 
     def has_role(self, user_id: int, role: str) -> bool:
-        return role in self._roles_by_user.get(user_id, set())
+        normalized_role = validate_role(role)
+        return normalized_role in self._roles_by_user.get(user_id, set())
 
 
 __all__ = [

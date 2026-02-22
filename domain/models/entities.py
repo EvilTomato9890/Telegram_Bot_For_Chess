@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 
 from .enums import PlayerStatus, RoundStatus, TicketStatus, TicketType, TournamentStatus
 
@@ -15,7 +15,7 @@ class Tournament:
     id: int | None
     name: str
     status: TournamentStatus = TournamentStatus.DRAFT
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass(slots=True)

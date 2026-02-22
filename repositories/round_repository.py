@@ -21,6 +21,9 @@ class RoundRepository:
         self._rounds[round_id] = stored
         return stored
 
+    def get(self, round_id: int) -> Round | None:
+        return self._rounds.get(round_id)
+
     def list_by_tournament(self, tournament_id: int) -> list[Round]:
         return [r for r in self._rounds.values() if r.tournament_id == tournament_id]
 

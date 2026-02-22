@@ -71,6 +71,13 @@ class PairingResult:
     confirmation_request: PairingConfirmationRequest | None
 
 
+@dataclass(frozen=True, slots=True)
+class _PairingPlan:
+    pairs: list[tuple[PairingPlayer, PairingPlayer]]
+    bye: ByeAssignment | None
+    confirmation_request: PairingConfirmationRequest | None
+
+
 def generate_pairings(players: list[PairingPlayer], tables: list[TableSlot]) -> PairingResult:
     """Generate pairings by score groups with repeat/bye/color constraints."""
 
@@ -82,29 +89,10 @@ def generate_pairings(players: list[PairingPlayer], tables: list[TableSlot]) -> 
 
     ordered_players = sorted(players, key=lambda player: (-player.score, player.player_id))
 
-    bye, remaining_players, bye_confirmation = _assign_bye(ordered_players)
-
-    strict_pairs = _build_pairs(remaining_players, allow_repeats=False)
-    confirmation_request: PairingConfirmationRequest | None = bye_confirmation
-
-    if strict_pairs is None:
-        relaxed_pairs = _build_pairs(remaining_players, allow_repeats=True)
-        if relaxed_pairs is None:
-            raise PairingEngineError("unable to generate pairings for this round")
-        strict_pairs = relaxed_pairs
-        repeated_games = tuple(
-            (
-                min(white.player_id, black.player_id),
-                max(white.player_id, black.player_id),
-            )
-            for white, black in strict_pairs
-            if black.player_id in white.opponents
-        )
-        confirmation_request = PairingConfirmationRequest(
-            reason="Unable to avoid repeated opponents with current score groups.",
-            repeated_games=repeated_games,
-            repeated_bye_player_id=bye.player_id if bye and bye.repeated else None,
-        )
+    pairing_plan = _select_pairing_plan(ordered_players)
+    strict_pairs = pairing_plan.pairs
+    bye = pairing_plan.bye
+    confirmation_request = pairing_plan.confirmation_request
 
     games = tuple(
         GamePairing(
@@ -135,28 +123,78 @@ def generate_pairings(players: list[PairingPlayer], tables: list[TableSlot]) -> 
     )
 
 
-def _assign_bye(players: list[PairingPlayer]) -> tuple[ByeAssignment | None, list[PairingPlayer], PairingConfirmationRequest | None]:
+
+def _select_pairing_plan(
+    players: list[PairingPlayer],
+) -> _PairingPlan:
+    bye_options = _bye_options(players)
+
+    for bye, remaining_players, bye_confirmation in bye_options:
+        strict_pairs = _build_pairs(remaining_players, allow_repeats=False)
+        if strict_pairs is not None:
+            return _PairingPlan(pairs=strict_pairs, bye=bye, confirmation_request=bye_confirmation)
+
+    for bye, remaining_players, bye_confirmation in bye_options:
+        relaxed_pairs = _build_pairs(remaining_players, allow_repeats=True)
+        if relaxed_pairs is None:
+            continue
+
+        repeated_games = tuple(
+            (
+                min(white.player_id, black.player_id),
+                max(white.player_id, black.player_id),
+            )
+            for white, black in relaxed_pairs
+            if black.player_id in white.opponents
+        )
+        return _PairingPlan(
+            pairs=relaxed_pairs,
+            bye=bye,
+            confirmation_request=(
+                PairingConfirmationRequest(
+                    reason="Unable to avoid repeated opponents with current score groups.",
+                    repeated_games=repeated_games,
+                    repeated_bye_player_id=bye.player_id if bye and bye.repeated else None,
+                )
+                if repeated_games
+                else bye_confirmation
+            ),
+        )
+
+    raise PairingEngineError("unable to generate pairings for this round")
+
+
+def _bye_options(
+    players: list[PairingPlayer],
+) -> list[tuple[ByeAssignment | None, list[PairingPlayer], PairingConfirmationRequest | None]]:
     if len(players) % 2 == 0:
-        return None, players, None
+        return [(None, players, None)]
 
     sorted_for_bye = sorted(players, key=lambda player: (player.score, player.player_id))
     preferred = [player for player in sorted_for_bye if not player.had_bye]
+    repeated = [player for player in sorted_for_bye if player.had_bye]
 
-    if preferred:
-        bye_player = preferred[0]
-        return ByeAssignment(player_id=bye_player.player_id, repeated=False), [
-            player for player in players if player.player_id != bye_player.player_id
-        ], None
+    options: list[tuple[ByeAssignment | None, list[PairingPlayer], PairingConfirmationRequest | None]] = []
+    for player in [*preferred, *repeated]:
+        bye = ByeAssignment(player_id=player.player_id, repeated=player.had_bye)
+        confirmation = (
+            PairingConfirmationRequest(
+                reason="All players already had a bye; assigning repeated bye requires confirmation.",
+                repeated_games=tuple(),
+                repeated_bye_player_id=player.player_id,
+            )
+            if player.had_bye
+            else None
+        )
+        options.append(
+            (
+                bye,
+                [candidate for candidate in players if candidate.player_id != player.player_id],
+                confirmation,
+            )
+        )
 
-    bye_player = sorted_for_bye[0]
-    confirmation = PairingConfirmationRequest(
-        reason="All players already had a bye; assigning repeated bye requires confirmation.",
-        repeated_games=tuple(),
-        repeated_bye_player_id=bye_player.player_id,
-    )
-    return ByeAssignment(player_id=bye_player.player_id, repeated=True), [
-        player for player in players if player.player_id != bye_player.player_id
-    ], confirmation
+    return options
 
 
 def _build_pairs(players: list[PairingPlayer], *, allow_repeats: bool) -> list[tuple[PairingPlayer, PairingPlayer]] | None:

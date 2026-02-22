@@ -111,6 +111,22 @@ def test_pairing_engine_assigns_non_repeated_bye_if_possible() -> None:
     assert result.confirmation_request is None
 
 
+def test_pairing_engine_tries_multiple_bye_candidates_before_allowing_repeats() -> None:
+    players = [
+        _player(1, 3.0, opponents={2, 3, 4}, had_bye=True),
+        _player(2, 2.0, opponents={1}),
+        _player(3, 2.0, opponents={1}),
+        _player(4, 2.0, opponents={1}),
+        _player(5, 0.0),
+    ]
+
+    result = generate_pairings(players, [TableSlot(location="Main", place="A") for _ in range(2)])
+
+    assert result.bye is not None
+    assert result.bye.player_id == 2
+    assert result.confirmation_request is None
+
+
 def test_pairing_engine_fails_when_tables_are_insufficient() -> None:
     with pytest.raises(InsufficientTablesError, match="insufficient tables"):
         generate_pairings(

@@ -149,9 +149,52 @@ async def organizer_help(message: Message, acl: AccessControlService) -> None:
                 "/round <n>",
                 "/approve_result <game_id>",
                 "/finish_tournament",
+                "/clear_history confirm",
             ]
         )
     )
+
+
+@router.message(Command("clear_history"))
+async def clear_history(
+    message: Message,
+    command: CommandObject,
+    acl: AccessControlService,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Delete non-active tournaments with explicit confirmation argument."""
+    if not _is_organizer(message, acl):
+        await message.answer("У вас нет прав организатора для этой команды.")
+        return
+
+    if command.args is None or command.args.strip().lower() != "confirm":
+        await message.answer(
+            "Команда удаляет историю турниров (все, кроме ACTIVE). "
+            "Для подтверждения выполните: /clear_history confirm"
+        )
+        return
+
+    async with session_factory() as session:
+        active_result = await session.execute(select(Tournament).where(Tournament.status == TournamentStatus.ACTIVE))
+        active_tournaments = list(active_result.scalars().all())
+        if active_tournaments:
+            await message.answer("Удаление запрещено: найден активный турнир. Сначала завершите его.")
+            return
+
+        delete_result = await session.execute(select(Tournament).where(Tournament.status != TournamentStatus.ACTIVE))
+        tournaments_to_delete = list(delete_result.scalars().all())
+
+        if not tournaments_to_delete:
+            await message.answer("История пуста: турниров для удаления нет.")
+            return
+
+        deleted_count = len(tournaments_to_delete)
+        for tournament in tournaments_to_delete:
+            await session.delete(tournament)
+
+        await session.commit()
+
+    await message.answer(f"✅ Удалено турниров: {deleted_count}.")
 
 
 @router.message(Command("add_player"))

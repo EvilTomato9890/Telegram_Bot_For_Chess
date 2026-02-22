@@ -10,8 +10,12 @@ def apply_migrations(db_path: str | Path, migrations_dir: str | Path | None = No
     migrations_root = Path(migrations_dir or Path(__file__).resolve().parents[1] / "migrations")
     migration_files = sorted(migrations_root.glob("*.sql"))
 
+    if not migration_files:
+        raise FileNotFoundError(f"No migration files found in {migrations_root}")
+
     connection = sqlite3.connect(str(db_path))
     try:
+        connection.execute("PRAGMA foreign_keys = ON")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS schema_migrations (

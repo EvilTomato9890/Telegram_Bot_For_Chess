@@ -1,7 +1,7 @@
 CREATE TABLE tournaments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    status TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('draft', 'registration', 'ongoing', 'finished')),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -10,7 +10,7 @@ CREATE TABLE players (
     tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
     telegram_user_id INTEGER NOT NULL,
     display_name TEXT NOT NULL,
-    status TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('registered', 'active', 'withdrawn', 'banned')),
     score REAL NOT NULL DEFAULT 0,
     buchholz REAL NOT NULL DEFAULT 0,
     median_buchholz REAL NOT NULL DEFAULT 0,
@@ -22,7 +22,7 @@ CREATE TABLE rounds (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
     number INTEGER NOT NULL,
-    status TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('planned', 'active', 'finished')),
     UNIQUE (tournament_id, number)
 );
 
@@ -48,16 +48,22 @@ CREATE TABLE games (
     table_id INTEGER REFERENCES tables(id) ON DELETE SET NULL,
     white_player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE RESTRICT,
     black_player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE RESTRICT,
-    result TEXT,
+    result TEXT CHECK (result IS NULL OR result IN ('1-0', '0-1', '0.5-0.5', 'bye', 'forfeit')),
     CHECK (white_player_id != black_player_id)
 );
 
 CREATE TABLE tickets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     author_player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-    ticket_type TEXT NOT NULL,
-    status TEXT NOT NULL,
+    ticket_type TEXT NOT NULL CHECK (ticket_type IN ('result_dispute', 'pairing_issue', 'technical', 'other')),
+    status TEXT NOT NULL CHECK (status IN ('open', 'assigned', 'resolved', 'closed')),
     game_id INTEGER REFERENCES games(id) ON DELETE SET NULL,
     title TEXT NOT NULL DEFAULT '',
     body TEXT NOT NULL DEFAULT ''
 );
+
+CREATE INDEX idx_players_tournament_id ON players(tournament_id);
+CREATE INDEX idx_rounds_tournament_id ON rounds(tournament_id);
+CREATE INDEX idx_games_round_id ON games(round_id);
+CREATE INDEX idx_tickets_author_player_id ON tickets(author_player_id);
+CREATE INDEX idx_tickets_game_id ON tickets(game_id);

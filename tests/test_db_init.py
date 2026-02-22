@@ -25,3 +25,17 @@ def test_init_db_creates_all_required_tables(tmp_path: Path) -> None:
         "games",
         "tickets",
     }.issubset(tables)
+
+
+def test_init_db_is_idempotent(tmp_path: Path) -> None:
+    db_path = tmp_path / "app.db"
+    init_db(f"sqlite:///{db_path}")
+    init_db(f"sqlite:///{db_path}")
+
+    connection = sqlite3.connect(db_path)
+    try:
+        rows = connection.execute("SELECT filename FROM schema_migrations").fetchall()
+    finally:
+        connection.close()
+
+    assert rows == [("001_initial_schema.sql",)]

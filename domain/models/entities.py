@@ -7,6 +7,8 @@ from datetime import datetime
 
 from .enums import PlayerStatus, RoundStatus, TicketStatus, TicketType, TournamentStatus
 
+_VALID_RESULT_POINTS = {0.0, 0.5, 1.0}
+
 
 @dataclass(slots=True)
 class Tournament:
@@ -33,6 +35,19 @@ class Player:
 
         `game_results` stores `(result_points, opponent_final_score)` tuples.
         """
+
+        if len(opponents_scores) != len(game_results):
+            raise ValueError("opponents_scores and game_results must have equal lengths")
+
+        for score in opponents_scores:
+            if score < 0:
+                raise ValueError("Opponent scores must be non-negative")
+
+        for result_points, opponent_score in game_results:
+            if result_points not in _VALID_RESULT_POINTS:
+                raise ValueError("Result points must be one of 0.0, 0.5, 1.0")
+            if opponent_score < 0:
+                raise ValueError("Opponent scores must be non-negative")
 
         self.buchholz = sum(opponents_scores)
 

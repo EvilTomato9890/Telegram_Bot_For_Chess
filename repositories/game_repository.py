@@ -24,5 +24,14 @@ class GameRepository:
     def list_by_round(self, round_id: int) -> list[Game]:
         return [g for g in self._games.values() if g.round_id == round_id]
 
+    def get(self, game_id: int) -> Game | None:
+        return self._games.get(game_id)
+
+    def update(self, game: Game) -> Game:
+        if game.id is None:
+            raise ValueError("game.id is required for update")
+        self._games[game.id] = game
+        return game
+
 
 __all__ = ["GameRepository"]

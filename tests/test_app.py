@@ -1,10 +1,12 @@
 from pathlib import Path
 
+from _pytest.monkeypatch import MonkeyPatch
+
 from bot.app import create_container
 from services import PairingService, TicketService, TournamentService
 
 
-def test_create_container_wires_dependencies(tmp_path: Path, monkeypatch) -> None:
+def test_create_container_wires_dependencies(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv("TOKEN", "token")
     monkeypatch.setenv("DB_URL", "sqlite:///db.sqlite3")
     monkeypatch.setenv("ADMIN_IDS", "10")

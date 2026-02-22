@@ -1,9 +1,11 @@
 from pathlib import Path
 
+from _pytest.monkeypatch import MonkeyPatch
+
 from infra.config import load_config
 
 
-def test_load_config_from_dotenv(tmp_path: Path, monkeypatch) -> None:
+def test_load_config_from_dotenv(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     dotenv = tmp_path / ".env"
     dotenv.write_text(
         "\n".join(

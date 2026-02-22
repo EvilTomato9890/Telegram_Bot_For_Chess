@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from handlers.acl import acl_required
 from schemas import RoleCommand
 from services import AccessControlService
 from validators import parse_positive_int, validate_role
@@ -13,6 +14,7 @@ class RoleCommandHandler:
     def __init__(self, access_control_service: AccessControlService) -> None:
         self._access_control_service = access_control_service
 
+    @acl_required("/grant_role")
     def handle_grant(self, actor_id: int, raw_command: str) -> str:
         command = self._parse_role_command(actor_id=actor_id, raw_command=raw_command)
         result = self._access_control_service.grant_role(
@@ -22,6 +24,7 @@ class RoleCommandHandler:
         )
         return self._format_response(result.message)
 
+    @acl_required("/revoke_role")
     def handle_revoke(self, actor_id: int, raw_command: str) -> str:
         command = self._parse_role_command(actor_id=actor_id, raw_command=raw_command)
         result = self._access_control_service.revoke_role(

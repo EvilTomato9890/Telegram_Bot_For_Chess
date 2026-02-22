@@ -14,8 +14,8 @@ from repositories import (
     TicketRepository,
     TournamentRepository,
 )
-from schemas import ServiceResponse
-from validators import validate_role
+
+from .access_control import AccessControlService
 
 _VALID_RESULTS = {"1-0", "0-1", "0.5-0.5", "bye", "forfeit"}
 
@@ -188,29 +188,6 @@ class NotificationService:
         return messages
 
 
-class AccessControlService:
-    """Role grants/revokes and permissions checks."""
-
-    def __init__(self) -> None:
-        self._roles_by_user: dict[int, set[str]] = {}
-
-    def grant_role(self, actor_id: int, target_user_id: int, role: str) -> ServiceResponse:
-        del actor_id
-        normalized_role = validate_role(role)
-        roles = self._roles_by_user.setdefault(target_user_id, set())
-        roles.add(normalized_role)
-        return ServiceResponse(ok=True, message=f"role '{normalized_role}' granted to user {target_user_id}")
-
-    def revoke_role(self, actor_id: int, target_user_id: int, role: str) -> ServiceResponse:
-        del actor_id
-        normalized_role = validate_role(role)
-        roles = self._roles_by_user.setdefault(target_user_id, set())
-        roles.discard(normalized_role)
-        return ServiceResponse(ok=True, message=f"role '{normalized_role}' revoked for user {target_user_id}")
-
-    def has_role(self, user_id: int, role: str) -> bool:
-        normalized_role = validate_role(role)
-        return normalized_role in self._roles_by_user.get(user_id, set())
 
 
 __all__ = [

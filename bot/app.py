@@ -19,6 +19,7 @@ from services import (
     NotificationService,
     PairingService,
     RegistrationService,
+    ResultReportingService,
     ScoringService,
     TicketService,
     TournamentService,
@@ -35,6 +36,7 @@ class Container:
     registration_service: RegistrationService
     pairing_service: PairingService
     scoring_service: ScoringService
+    result_reporting_service: ResultReportingService
     ticket_service: TicketService
     notification_service: NotificationService
     access_control_service: AccessControlService
@@ -67,6 +69,17 @@ def create_container() -> Container:
     game_repository = GameRepository()
     ticket_repository = TicketRepository()
 
+    notification_service = NotificationService()
+    access_control_service = AccessControlService.from_config(
+        admin_ids=config.admin_ids,
+        arbitrs_ids=config.arbitrs_ids,
+    )
+    scoring_service = ScoringService(
+        player_repository=player_repository,
+        round_repository=round_repository,
+        game_repository=game_repository,
+    )
+
     return Container(
         config=config,
         audit_logger=audit_logger,
@@ -81,17 +94,17 @@ def create_container() -> Container:
             table_repository=table_repository,
             game_repository=game_repository,
         ),
-        scoring_service=ScoringService(
-            player_repository=player_repository,
-            round_repository=round_repository,
+        scoring_service=scoring_service,
+        result_reporting_service=ResultReportingService(
             game_repository=game_repository,
+            round_repository=round_repository,
+            scoring_service=scoring_service,
+            notification_service=notification_service,
+            access_control_service=access_control_service,
         ),
         ticket_service=TicketService(ticket_repository=ticket_repository),
-        notification_service=NotificationService(),
-        access_control_service=AccessControlService.from_config(
-            admin_ids=config.admin_ids,
-            arbitrs_ids=config.arbitrs_ids,
-        ),
+        notification_service=notification_service,
+        access_control_service=access_control_service,
     )
 
 

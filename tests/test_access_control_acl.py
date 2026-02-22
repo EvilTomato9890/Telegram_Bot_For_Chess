@@ -34,3 +34,10 @@ def test_help_aggregates_unique_commands_for_all_user_roles() -> None:
 def test_acl_matrix_roles_are_validated_on_service_init() -> None:
     with pytest.raises(ValueError, match="role must be one of"):
         AccessControlService(command_access_matrix={"/custom": {"owner"}})
+
+
+def test_player_can_execute_report_command() -> None:
+    service = AccessControlService(config_roles_by_user={11: {"player"}})
+
+    assert service.can_execute(11, "/report") is True
+    assert service.can_execute(11, "/approve_result") is False

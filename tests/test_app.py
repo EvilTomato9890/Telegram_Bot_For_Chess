@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pytest import MonkeyPatch
+from _pytest.monkeypatch import MonkeyPatch
 
 from bot.app import create_container
 from services import PairingService, TicketService, TournamentService

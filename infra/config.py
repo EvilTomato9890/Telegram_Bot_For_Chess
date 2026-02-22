@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import os
 from pathlib import Path
+import os
 
 
 @dataclass(slots=True)
@@ -20,20 +20,20 @@ class AppConfig:
     audit_log_path: str = "logs/audit.log"
 
 
-def _read_dotenv(dotenv_path: Path) -> dict[str, str]:
-    """Read key/value pairs from a .env file without mutating process env."""
+def _load_dotenv(dotenv_path: Path) -> None:
+    """Load key/value pairs from .env into process environment if unset."""
 
     if not dotenv_path.exists():
-        return {}
+        return
 
-    result: dict[str, str] = {}
     for raw_line in dotenv_path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        result[key.strip()] = value.strip().strip('"').strip("'")
-    return result
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        os.environ.setdefault(key, value)
 
 
 def _parse_int_list(raw_value: str | None, *, field_name: str) -> list[int]:
@@ -52,8 +52,8 @@ def _parse_int_list(raw_value: str | None, *, field_name: str) -> list[int]:
     return parsed
 
 
-def _get_required(source: dict[str, str], name: str) -> str:
-    value = source.get(name)
+def _get_required(name: str) -> str:
+    value = os.getenv(name)
     if value is None or value.strip() == "":
         raise ValueError(f"Missing required environment variable: {name}")
     return value
@@ -62,17 +62,16 @@ def _get_required(source: dict[str, str], name: str) -> str:
 def load_config(dotenv_path: str | Path = ".env") -> AppConfig:
     """Load application config from `.env` and environment variables."""
 
-    dotenv_values = _read_dotenv(Path(dotenv_path))
-    source: dict[str, str] = {**dotenv_values, **dict(os.environ)}
+    _load_dotenv(Path(dotenv_path))
 
     return AppConfig(
-        token=_get_required(source, "TOKEN"),
-        admin_ids=_parse_int_list(source.get("ADMIN_IDS"), field_name="ADMIN_IDS"),
-        arbitrs_ids=_parse_int_list(source.get("ARBITRS_IDS"), field_name="ARBITRS_IDS"),
-        timezone=source.get("TIMEZONE", "UTC"),
-        db_url=_get_required(source, "DB_URL"),
-        log_level=source.get("LOG_LEVEL", "INFO"),
-        audit_log_path=source.get("AUDIT_LOG_PATH", "logs/audit.log"),
+        token=_get_required("TOKEN"),
+        admin_ids=_parse_int_list(os.getenv("ADMIN_IDS"), field_name="ADMIN_IDS"),
+        arbitrs_ids=_parse_int_list(os.getenv("ARBITRS_IDS"), field_name="ARBITRS_IDS"),
+        timezone=os.getenv("TIMEZONE", "UTC"),
+        db_url=_get_required("DB_URL"),
+        log_level=os.getenv("LOG_LEVEL", "INFO"),
+        audit_log_path=os.getenv("AUDIT_LOG_PATH", "logs/audit.log"),
     )
 
 

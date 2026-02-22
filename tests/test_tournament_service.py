@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from bot.services.tournament import InsufficientTablesError, TournamentService
-from bot.utils.formatting import format_round_game
+from bot.utils.formatting import format_points, format_round_game
 
 
 class _DummyRepo:
@@ -56,3 +56,19 @@ def test_format_round_game_includes_location_and_seat() -> None:
     )
 
     assert text == "Тур 3: стол 4, место A, цвет белые, соперник @opponent, локация: Левый зал"
+
+
+def test_assign_tables_skips_inactive_tables() -> None:
+    service = _service()
+    pairings = [(1, 2)]
+    tables = [_table(table_id=1, number=1, is_active=False), _table(table_id=2, number=3)]
+
+    assignments = service.assign_tables(pairings, tables)
+
+    assert len(assignments) == 1
+    assert assignments[0].table_id == 2
+
+
+def test_format_points_renders_integer_and_half_points() -> None:
+    assert format_points(2.0) == "2"
+    assert format_points(2.5) == "2½"

@@ -3,16 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from bot.domain.enums import GameResult, GameStatus, PlayerStatus, RoundStatus, TournamentStatus
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
 
 class Base(DeclarativeBase):
     """Base class for all SQLAlchemy declarative models."""

@@ -6,6 +6,7 @@ format, level, and sinks.
 
 from __future__ import annotations
 
+import logging
 import sys
 import logging
 
@@ -42,7 +43,7 @@ def configure_logger(level: str) -> None:
     logger.remove()
     logger.add(
         sys.stdout,
-        level=level.upper(),
+        level=normalized_level,
         format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | "
         "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | {message}",
         enqueue=True,

@@ -2,33 +2,34 @@
 
 Telegram bot for chess tournament in MIPT.
 
+## Project layout
+
+- `bot/` — application factory and runtime bootstrap.
+- `domain/` — domain entities/value objects (reserved for expansion).
+- `services/` — business service contracts.
+- `repositories/` — persistence adapters (reserved for expansion).
+- `handlers/` — telegram command/update handlers (reserved for expansion).
+- `keyboards/` — telegram keyboard builders (reserved for expansion).
+- `infra/` — infrastructure concerns (`config`, `logging`).
+- `tests/` — automated tests.
+
+## Configuration
+
+Configuration is loaded from `.env` via `infra/config.py`.
+
+Required variables:
+
+- `TOKEN`
+- `DB_URL`
+
+Optional variables:
+
+- `ADMIN_IDS` (comma-separated integers)
+- `ARBITRS_IDS` (comma-separated integers)
+- `TIMEZONE` (default: `UTC`)
+- `LOG_LEVEL` (default: `INFO`)
+- `AUDIT_LOG_PATH` (default: `logs/audit.log`)
+
 ## Assumptions
 
 The project relies on explicit product assumptions for tournament lifecycle, command validation, result handling, and ticket load balancing. A full normative description is maintained in [`docs/assumptions.md`](docs/assumptions.md).
-
-### Tournament lifecycle
-
-- `draft -> registration -> ongoing -> finished`
-- Status transitions are strictly forward-only according to the allowed transition table in `docs/assumptions.md`.
-
-### Command validation by status
-
-Commands are validated against tournament status before execution. If a command is not allowed for the current status, it must be rejected with a clear validation error.
-
-### Match result format
-
-Only the following values are accepted:
-
-- `1-0`
-- `0-1`
-- `0.5-0.5`
-- `bye`
-- `forfeit`
-
-### Result confirmation and override
-
-Result confirmation and overrides are role- and status-dependent and are described in `docs/assumptions.md`.
-
-### Ticket routing policy
-
-"Least-loaded" means the assignee with the smallest number of tickets in `open` + `assigned` states.

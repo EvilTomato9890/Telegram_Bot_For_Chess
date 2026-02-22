@@ -84,7 +84,10 @@ def create_container() -> Container:
         scoring_service=ScoringService(),
         ticket_service=TicketService(ticket_repository=ticket_repository),
         notification_service=NotificationService(),
-        access_control_service=AccessControlService(),
+        access_control_service=AccessControlService.from_config(
+            admin_ids=config.admin_ids,
+            arbitrs_ids=config.arbitrs_ids,
+        ),
     )
 
 

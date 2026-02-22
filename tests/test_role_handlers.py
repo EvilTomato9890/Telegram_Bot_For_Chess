@@ -6,7 +6,8 @@ from services import AccessControlService
 
 @pytest.fixture
 def role_handler() -> RoleCommandHandler:
-    return RoleCommandHandler(access_control_service=AccessControlService())
+    service = AccessControlService(config_roles_by_user={1: {"admin"}})
+    return RoleCommandHandler(access_control_service=service)
 
 
 def test_grant_role_command(role_handler: RoleCommandHandler) -> None:
@@ -32,3 +33,10 @@ def test_role_command_validates_input(role_handler: RoleCommandHandler) -> None:
 
     with pytest.raises(ValueError, match="role must be one of"):
         role_handler.handle_grant(actor_id=1, raw_command="/grant_role 42 owner")
+
+
+def test_role_command_requires_acl() -> None:
+    role_handler = RoleCommandHandler(access_control_service=AccessControlService())
+
+    with pytest.raises(PermissionError, match="access denied"):
+        role_handler.handle_grant(actor_id=999, raw_command="/grant_role 42 admin")

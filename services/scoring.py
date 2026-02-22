@@ -56,6 +56,11 @@ class ScoringService:
         game = self._game_repository.get(game_id)
         if game is None:
             raise ValueError("game not found")
+        if game.white_player_id == game.black_player_id and normalized_result != "bye":
+            raise ValueError("self-pairing can only be used with bye result")
+        if normalized_result == "bye" and game.white_player_id != game.black_player_id:
+            raise ValueError("bye result requires a dedicated bye game")
+
         updated = replace(game, result=normalized_result)
         return self._game_repository.update(updated)
 
@@ -64,12 +69,15 @@ class ScoringService:
         rounds = self._round_repository.list_by_tournament(tournament_id)
         games = [game for round_ in rounds for game in self._game_repository.list_by_round(round_.id or 0)]
 
+        player_ids = {player.id for player in players if player.id is not None}
         player_scores: dict[int, float] = {player.id or 0: 0.0 for player in players}
         opponents: dict[int, list[int]] = defaultdict(list)
         results_by_player: dict[int, list[tuple[float, int]]] = defaultdict(list)
 
         for game in games:
             if game.result is None:
+                continue
+            if game.white_player_id not in player_ids or game.black_player_id not in player_ids:
                 continue
             white_points, black_points = self._result_points(game.result)
             player_scores[game.white_player_id] = player_scores.get(game.white_player_id, 0.0) + white_points

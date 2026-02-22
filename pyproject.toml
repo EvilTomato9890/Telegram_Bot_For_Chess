@@ -8,6 +8,7 @@ dependencies = [
   "aiogram>=3.13.1,<4.0.0",
   "sqlalchemy>=2.0.35,<3.0.0",
   "alembic>=1.13.2,<2.0.0",
+  "aiosqlite>=0.20.0,<1.0.0",
   "pydantic-settings>=2.5.2,<3.0.0",
   "loguru>=0.7.2,<1.0.0",
 ]

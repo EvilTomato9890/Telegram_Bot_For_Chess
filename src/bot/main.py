@@ -13,6 +13,7 @@ from aiogram.types import ErrorEvent
 from loguru import logger
 
 from bot.config import get_settings
+from bot.db.migrations import initialize_database
 from bot.handlers.organizer import router as organizer_router
 from bot.handlers.player import router as player_router
 from bot.logging import configure_logger
@@ -45,6 +46,8 @@ async def run() -> None:
     """Start bot polling loop with configured dependencies."""
     settings = get_settings()
     configure_logger(settings.log_level)
+
+    await initialize_database(settings.database_url)
 
     acl = AccessControlService(admin_ids=set(settings.admin_ids))
     bot = Bot(token=settings.token)

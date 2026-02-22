@@ -13,9 +13,9 @@ class TournamentService:
         self._tournaments = tournaments
         self._players = players
 
-    async def create_tournament(self, title: str, rounds_total: int) -> int:
+    async def create_tournament(self, rounds_count: int, rules_text: str = "") -> int:
         """Create a tournament and return its identifier for bot messaging."""
-        entity = await self._tournaments.create(title=title, rounds_total=rounds_total)
+        entity = await self._tournaments.create(rounds_count=rounds_count, rules_text=rules_text)
         return entity.id
 
     def build_pairings(self, standings: list[Standing]) -> list[tuple[int, int | None]]:

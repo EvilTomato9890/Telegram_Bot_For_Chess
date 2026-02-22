@@ -81,7 +81,11 @@ def create_container() -> Container:
             table_repository=table_repository,
             game_repository=game_repository,
         ),
-        scoring_service=ScoringService(),
+        scoring_service=ScoringService(
+            player_repository=player_repository,
+            round_repository=round_repository,
+            game_repository=game_repository,
+        ),
         ticket_service=TicketService(ticket_repository=ticket_repository),
         notification_service=NotificationService(),
         access_control_service=AccessControlService.from_config(

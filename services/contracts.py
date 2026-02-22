@@ -16,8 +16,8 @@ from repositories import (
 )
 
 from .access_control import AccessControlService
+from .scoring import ScoringService
 
-_VALID_RESULTS = {"1-0", "0-1", "0.5-0.5", "bye", "forfeit"}
 
 
 class TournamentService:
@@ -136,15 +136,6 @@ class PairingService:
                 black_player_id=black_player_id,
             )
         )
-
-
-class ScoringService:
-    """Validate and register game results."""
-
-    def validate_result(self, result: str) -> str:
-        if result not in _VALID_RESULTS:
-            raise ValueError("invalid result token")
-        return result
 
 
 class TicketService:

@@ -6,6 +6,7 @@ from handlers, background jobs, or tests.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
@@ -60,14 +61,13 @@ def swiss_pairings(
     if pairs is None:
         raise ValueError("Unable to create Swiss pairings without violating constraints")
 
+    result_pairs: list[tuple[int, int | None]] = list(pairs)
     if bye_pair is not None:
-        pairs.append(bye_pair)
-    return pairs
+        result_pairs.append(bye_pair)
+    return result_pairs
 
 
 def _build_history_map(history: Iterable[tuple[int, int]]) -> dict[int, set[int]]:
-    from collections import defaultdict
-
     played: dict[int, set[int]] = defaultdict(set)
     for p1, p2 in history:
         played[p1].add(p2)
@@ -85,6 +85,7 @@ def _find_pairings(
         return []
 
     first = players[0]
+    first_played = played.get(first)
     candidate_indexes = sorted(
         range(1, len(players)),
         key=lambda idx: (abs(score_map.get(players[idx], 0.0) - score_map.get(first, 0.0)), idx),
@@ -92,7 +93,7 @@ def _find_pairings(
 
     for idx in candidate_indexes:
         second = players[idx]
-        if second in played.get(first, set()):
+        if first_played is not None and second in first_played:
             continue
 
         oriented = _choose_colors(first, second, color_map)

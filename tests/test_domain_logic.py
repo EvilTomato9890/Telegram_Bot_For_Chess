@@ -62,3 +62,21 @@ def test_validators() -> None:
         pass
     else:
         raise AssertionError("expected invariant violation")
+
+
+def test_swiss_pairings_assigns_bye_to_last_player_when_everyone_had_bye() -> None:
+    pairs = swiss_pairings(
+        [11, 12, 13],
+        had_bye={11, 12, 13},
+    )
+
+    assert pairs[-1] == (13, None)
+
+
+def test_validators_happy_path_does_not_raise() -> None:
+    validate_can_generate_round(current_round_status=RoundStatus.FINISHED)
+    validate_can_finish_tournament(
+        tournament_status=TournamentStatus.ACTIVE,
+        has_unfinished_rounds=False,
+        has_pending_games=False,
+    )

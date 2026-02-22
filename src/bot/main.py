@@ -40,7 +40,7 @@ def build_dispatcher(acl: AccessControlService) -> Dispatcher:
         return True
 
     dispatcher.include_router(root_router)
-    dispatcher[AccessControlService] = acl
+    dispatcher["acl"] = acl
     return dispatcher
 
 

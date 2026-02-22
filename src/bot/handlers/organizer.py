@@ -8,7 +8,7 @@ from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 from sqlalchemy import and_, or_, select
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from bot.db.models import Game, Player, Round, Table, Tournament
@@ -31,7 +31,7 @@ def _format_result(result: GameResult | None) -> str:
     return result.value
 
 
-async def _get_current_tournament(session) -> Tournament | None:
+async def _get_current_tournament(session: AsyncSession) -> Tournament | None:
     result = await session.execute(
         select(Tournament)
         .where(Tournament.status.in_([TournamentStatus.ACTIVE, TournamentStatus.DRAFT]))
@@ -57,15 +57,19 @@ async def _resolve_telegram_id(message: Message, identifier: str) -> tuple[int |
     if not username:
         return None, "Укажите telegram_id числом или @username."
 
+    bot = message.bot
+    if bot is None:
+        return None, "Не удалось определить telegram_id по username. Укажите числовой telegram_id."
+
     try:
-        chat = await message.bot.get_chat(chat_id=f"@{username}")
+        chat = await bot.get_chat(chat_id=f"@{username}")
     except Exception:
         return None, "Не удалось определить telegram_id по username. Укажите числовой telegram_id."
 
     return int(chat.id), None
 
 
-async def _recalculate_scores_and_tiebreaks(session, tournament_id: int) -> None:
+async def _recalculate_scores_and_tiebreaks(session: AsyncSession, tournament_id: int) -> None:
     players_result = await session.execute(select(Player).where(Player.tournament_id == tournament_id))
     players = list(players_result.scalars().all())
     by_id = {player.id: player for player in players}
@@ -155,7 +159,7 @@ async def add_player(
     message: Message,
     command: CommandObject,
     acl: AccessControlService,
-    session_factory: async_sessionmaker,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     if not _is_organizer(message, acl):
         await message.answer("У вас нет прав организатора для этой команды.")
@@ -216,7 +220,7 @@ async def disqualify_player(
     message: Message,
     command: CommandObject,
     acl: AccessControlService,
-    session_factory: async_sessionmaker,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     if not _is_organizer(message, acl):
         await message.answer("У вас нет прав организатора для этой команды.")
@@ -263,7 +267,7 @@ async def disqualify_player(
 
 
 @router.message(Command("tables"))
-async def list_tables(message: Message, acl: AccessControlService, session_factory: async_sessionmaker) -> None:
+async def list_tables(message: Message, acl: AccessControlService, session_factory: async_sessionmaker[AsyncSession]) -> None:
     if not _is_organizer(message, acl):
         await message.answer("У вас нет прав организатора для этой команды.")
         return
@@ -289,7 +293,7 @@ async def add_table(
     message: Message,
     command: CommandObject,
     acl: AccessControlService,
-    session_factory: async_sessionmaker,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     if not _is_organizer(message, acl):
         await message.answer("У вас нет прав организатора для этой команды.")
@@ -332,7 +336,7 @@ async def remove_table(
     message: Message,
     command: CommandObject,
     acl: AccessControlService,
-    session_factory: async_sessionmaker,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     if not _is_organizer(message, acl):
         await message.answer("У вас нет прав организатора для этой команды.")
@@ -379,7 +383,7 @@ async def set_rules(
     message: Message,
     command: CommandObject,
     acl: AccessControlService,
-    session_factory: async_sessionmaker,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     if not _is_organizer(message, acl):
         await message.answer("У вас нет прав организатора для этой команды.")
@@ -407,7 +411,7 @@ async def start_tournament(
     message: Message,
     command: CommandObject,
     acl: AccessControlService,
-    session_factory: async_sessionmaker,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     if not _is_organizer(message, acl):
         await message.answer("У вас нет прав организатора для этой команды.")
@@ -449,7 +453,7 @@ async def start_tournament(
 
 
 @router.message(Command("next_round"))
-async def next_round(message: Message, acl: AccessControlService, session_factory: async_sessionmaker) -> None:
+async def next_round(message: Message, acl: AccessControlService, session_factory: async_sessionmaker[AsyncSession]) -> None:
     if not _is_organizer(message, acl):
         await message.answer("У вас нет прав организатора для этой команды.")
         return
@@ -591,7 +595,7 @@ async def show_round(
     message: Message,
     command: CommandObject,
     acl: AccessControlService,
-    session_factory: async_sessionmaker,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     if not _is_organizer(message, acl):
         await message.answer("У вас нет прав организатора для этой команды.")
@@ -649,7 +653,7 @@ async def approve_result(
     message: Message,
     command: CommandObject,
     acl: AccessControlService,
-    session_factory: async_sessionmaker,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     if not _is_organizer(message, acl):
         await message.answer("У вас нет прав организатора для этой команды.")
@@ -706,7 +710,7 @@ async def approve_result(
 async def finish_tournament(
     message: Message,
     acl: AccessControlService,
-    session_factory: async_sessionmaker,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     if not _is_organizer(message, acl):
         await message.answer("У вас нет прав организатора для этой команды.")

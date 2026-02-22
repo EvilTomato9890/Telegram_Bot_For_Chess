@@ -8,7 +8,7 @@ from aiogram import Router
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import Message
 from sqlalchemy import and_, or_, select
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from bot.db.models import Game, Player, Round, Table, Tournament
@@ -27,7 +27,7 @@ _RESULT_MAP = {
 }
 
 
-async def _get_current_tournament(session) -> Tournament | None:
+async def _get_current_tournament(session: AsyncSession) -> Tournament | None:
     result = await session.execute(
         select(Tournament)
         .where(Tournament.status.in_([TournamentStatus.ACTIVE, TournamentStatus.DRAFT]))
@@ -36,7 +36,7 @@ async def _get_current_tournament(session) -> Tournament | None:
     return result.scalars().first()
 
 
-async def _get_player(session, tournament_id: int, telegram_id: int) -> Player | None:
+async def _get_player(session: AsyncSession, tournament_id: int, telegram_id: int) -> Player | None:
     result = await session.execute(
         select(Player).where(Player.tournament_id == tournament_id, Player.telegram_id == telegram_id)
     )
@@ -59,7 +59,7 @@ async def start_player(message: Message) -> None:
 
 
 @router.message(Command("rules"))
-async def player_rules(message: Message, session_factory: async_sessionmaker) -> None:
+async def player_rules(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
     async with session_factory() as session:
         tournament = await _get_current_tournament(session)
 
@@ -75,7 +75,7 @@ async def player_rules(message: Message, session_factory: async_sessionmaker) ->
 
 
 @router.message(Command("my_next"))
-async def player_next_game(message: Message, session_factory: async_sessionmaker) -> None:
+async def player_next_game(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
     user = message.from_user
     if user is None:
         await message.answer("Не удалось определить пользователя.")
@@ -136,7 +136,7 @@ async def player_next_game(message: Message, session_factory: async_sessionmaker
 
 
 @router.message(Command("schedule"))
-async def player_schedule(message: Message, session_factory: async_sessionmaker) -> None:
+async def player_schedule(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
     async with session_factory() as session:
         tournament = await _get_current_tournament(session)
         if tournament is None:
@@ -160,7 +160,7 @@ async def player_schedule(message: Message, session_factory: async_sessionmaker)
 
 
 @router.message(Command("my_score"))
-async def player_score(message: Message, session_factory: async_sessionmaker) -> None:
+async def player_score(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
     user = message.from_user
     if user is None:
         await message.answer("Не удалось определить пользователя.")
@@ -190,7 +190,7 @@ async def player_score(message: Message, session_factory: async_sessionmaker) ->
 
 
 @router.message(Command("standings"))
-async def player_standings(message: Message, session_factory: async_sessionmaker) -> None:
+async def player_standings(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
     user = message.from_user
     if user is None:
         await message.answer("Не удалось определить пользователя.")
@@ -236,7 +236,7 @@ async def player_standings(message: Message, session_factory: async_sessionmaker
 async def player_report(
     message: Message,
     command: CommandObject,
-    session_factory: async_sessionmaker,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     user = message.from_user
     if user is None:

@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from domain.models import Game
 
 
 @dataclass(frozen=True, slots=True)
 class PairingOutcome:
-    """Round generation result with optional organizer confirmation demand."""
+    """Round generation result with optional admin confirmation demand."""
 
     round_number: int
     games: tuple[Game, ...]
@@ -26,3 +27,11 @@ class ReportOutcome:
     status: str
     message: str
 
+
+@dataclass(frozen=True, slots=True)
+class UndoResult:
+    """Result payload for one applied admin undo operation."""
+
+    snapshot_id: int
+    undone_action: str
+    restored_at: datetime

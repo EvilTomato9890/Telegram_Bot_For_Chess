@@ -33,11 +33,26 @@ def build_common_router(context: RouterContext) -> Router:
         if message.from_user is None:
             return
         text = (
-            "Добро пожаловать в бот швейцарского турнира.\n"
-            "Кнопки: регистрация и текущая информация."
+            "Добро пожаловать в бота шахматного турнира.\n"
+            "Используйте кнопки ниже: регистрация и доступ к меню турнира."
         )
         await message.answer(text, reply_markup=start_keyboard())
-        await message.answer("Меню игрока:", reply_markup=player_menu_keyboard())
+
+    @router.callback_query(F.data == "start:register")
+    async def start_register_callback(callback: CallbackQuery) -> None:
+        if callback.message is not None:
+            await callback.message.answer(
+                "Для регистрации используйте команду:\n"
+                "/register me <рейтинг> <Имя Фамилия>\n"
+                "Пример: /register me 1500 Иван Иванов"
+            )
+        await callback.answer()
+
+    @router.callback_query(F.data == "start:my_tournament")
+    async def start_tournament_menu_callback(callback: CallbackQuery) -> None:
+        if callback.message is not None:
+            await callback.message.answer("Открываю меню турнира.", reply_markup=player_menu_keyboard())
+        await callback.answer()
 
     @router.message(Command("help"))
     async def help_handler(message: Message) -> None:
@@ -75,7 +90,10 @@ def build_common_router(context: RouterContext) -> Router:
                 player_position = row.position
                 break
         lines = [
-            f"{row.position}. {row.full_name} - {row.score} (BH {row.buchholz}, MBH {row.median_buchholz}, SB {row.sonneborn_berger})"
+            (
+                f"{row.position}. {row.full_name} - {row.score} "
+                f"(BH {row.buchholz}, MBH {row.median_buchholz}, SB {row.sonneborn_berger})"
+            )
             for row in rows
         ]
         suffix = f"\nВаша позиция: {player_position}" if player_position is not None else ""
@@ -110,9 +128,9 @@ def build_common_router(context: RouterContext) -> Router:
                 ticket_id = int(parts[1])
             except ValueError as exc:
                 raise ValueError("Формат: /close_ticket <ticket_id>") from exc
-        elif Role.ARBITRATOR in roles or Role.ORGANIZER in roles:
+        elif Role.ARBITRATOR in roles or Role.ADMIN in roles:
             if Role.PLAYER not in roles:
-                raise ValueError("Для арбитра/организатора используйте /close_ticket <ticket_id>.")
+                raise ValueError("Для арбитра/админа используйте /close_ticket <ticket_id>.")
         closed = ticket_service.close_ticket(actor_id=message.from_user.id, ticket_id=ticket_id)
         await message.answer(f"Тикет #{closed.id} закрыт.")
 
@@ -174,7 +192,13 @@ def build_common_router(context: RouterContext) -> Router:
         acl.require(message.from_user.id, "/my_score")
         row = scoring_service.my_score(message.from_user.id)
         await message.answer(
-            f"Очки: {row.score}\nBuchholz: {row.buchholz}\nMedian Buchholz: {row.median_buchholz}\nSB: {row.sonneborn_berger}\nПозиция: {row.position}"
+            (
+                f"Очки: {row.score}\n"
+                f"Buchholz: {row.buchholz}\n"
+                f"Median Buchholz: {row.median_buchholz}\n"
+                f"SB: {row.sonneborn_berger}\n"
+                f"Позиция: {row.position}"
+            )
         )
 
     @router.message(Command("get_game_id"))
@@ -220,8 +244,12 @@ def build_common_router(context: RouterContext) -> Router:
         location = table.location if table else "неизвестно"
         place = table.place_hint if table and table.place_hint else "без уточнения"
         await message.answer(
-            f"Тур {round_.number}, стол {current.board_number}, цвет {'White' if is_white else 'Black'}, "
-            f"соперник {opponent_name}, локация: {location}, место: {place}"
+            (
+                f"Тур {round_.number}, стол {current.board_number}, "
+                f"цвет {'White' if is_white else 'Black'}, "
+                f"соперник {opponent_name}, локация: {location}, место: {place}"
+            )
         )
 
     return router
+

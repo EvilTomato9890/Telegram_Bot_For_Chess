@@ -10,7 +10,8 @@ class Role(StrEnum):
 
     PLAYER = "player"
     ARBITRATOR = "arbitrator"
-    ORGANIZER = "organizer"
+    # Wire value is intentionally left as "organizer" for DB compatibility.
+    ADMIN = "organizer"
 
 
 class TournamentStatus(StrEnum):

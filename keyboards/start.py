@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 
-def start_keyboard() -> ReplyKeyboardMarkup:
-    """Main entry keyboard with required actions."""
+def start_keyboard() -> InlineKeyboardMarkup:
+    """Entry keyboard with exactly two actions."""
 
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="/register me 0 Имя Фамилия")],
-            [KeyboardButton(text="/rules"), KeyboardButton(text="/standings 10")],
-        ],
-        resize_keyboard=True,
-        one_time_keyboard=False,
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📝 Регистрация", callback_data="start:register"),
+                InlineKeyboardButton(text="🏆 Мой турнир", callback_data="start:my_tournament"),
+            ]
+        ]
     )
 

@@ -12,8 +12,10 @@ def test_undo_restores_previous_state() -> None:
     table_repo.add(Table(id=None, number=2, location="B"))
     assert len(table_repo.list_all()) == 2
 
-    undo_service.undo_last_organizer_action(actor_id=9001)
+    result = undo_service.undo_last_admin_action(actor_id=9001)
+    assert result.undone_action == "/add_table"
+    assert result.snapshot_id > 0
+    assert result.restored_at.tzinfo is not None
     tables = table_repo.list_all()
     assert len(tables) == 1
     assert tables[0].number == 1
-

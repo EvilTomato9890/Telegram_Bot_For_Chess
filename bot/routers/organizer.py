@@ -1,8 +1,9 @@
-"""Organizer command handlers."""
+"""Admin command handlers."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
+
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
@@ -12,7 +13,7 @@ from domain.models import Player, Table
 
 
 def build_organizer_router(context: RouterContext) -> Router:
-    """Create organizer router with tournament admin commands."""
+    """Create router with admin tournament commands."""
 
     router = Router(name="organizer")
     acl = context.acl_service
@@ -28,7 +29,7 @@ def build_organizer_router(context: RouterContext) -> Router:
     notification_service = context.notification_service
     audit_logger = context.audit_logger
 
-    def organizer_check(message: Message, command: str) -> int:
+    def admin_check(message: Message, command: str) -> int:
         if message.from_user is None:
             raise ValueError("Не удалось определить пользователя.")
         acl.require(message.from_user.id, command)
@@ -74,7 +75,7 @@ def build_organizer_router(context: RouterContext) -> Router:
 
     @router.message(Command("add_player"))
     async def add_player_handler(message: Message) -> None:
-        actor = organizer_check(message, "/add_player")
+        actor = admin_check(message, "/add_player")
         parts = (message.text or "").split(maxsplit=2)
         if len(parts) < 3:
             raise ValueError("Формат: /add_player <telegram_id|@username> <имя>")
@@ -95,7 +96,7 @@ def build_organizer_router(context: RouterContext) -> Router:
             telegram_id = parse_int(raw_id, field="telegram_id")
             username = None
 
-        player = registration_service.add_player_by_organizer(
+        player = registration_service.add_player_by_admin(
             telegram_id=telegram_id,
             username=username,
             full_name=full_name,
@@ -106,7 +107,7 @@ def build_organizer_router(context: RouterContext) -> Router:
 
     @router.message(Command("disqualify"))
     async def disqualify_handler(message: Message) -> None:
-        actor = organizer_check(message, "/disqualify")
+        actor = admin_check(message, "/disqualify")
         parts = (message.text or "").split()
         if len(parts) != 2:
             raise ValueError("Формат: /disqualify <player_id>")
@@ -117,7 +118,7 @@ def build_organizer_router(context: RouterContext) -> Router:
 
     @router.message(Command("tables"))
     async def tables_handler(message: Message) -> None:
-        organizer_check(message, "/tables")
+        admin_check(message, "/tables")
         tables = table_repo.list_all()
         if not tables:
             await message.answer("Столы не добавлены.")
@@ -127,7 +128,7 @@ def build_organizer_router(context: RouterContext) -> Router:
 
     @router.message(Command("add_table"))
     async def add_table_handler(message: Message) -> None:
-        actor = organizer_check(message, "/add_table")
+        actor = admin_check(message, "/add_table")
         parts = (message.text or "").split(maxsplit=2)
         if len(parts) < 3:
             raise ValueError("Формат: /add_table <номер> <локация>")
@@ -142,7 +143,7 @@ def build_organizer_router(context: RouterContext) -> Router:
 
     @router.message(Command("remove_table"))
     async def remove_table_handler(message: Message) -> None:
-        actor = organizer_check(message, "/remove_table")
+        actor = admin_check(message, "/remove_table")
         parts = (message.text or "").split()
         if len(parts) != 2:
             raise ValueError("Формат: /remove_table <номер>")
@@ -161,7 +162,7 @@ def build_organizer_router(context: RouterContext) -> Router:
 
     @router.message(Command("set_rules"))
     async def set_rules_handler(message: Message) -> None:
-        actor = organizer_check(message, "/set_rules")
+        actor = admin_check(message, "/set_rules")
         text = (message.text or "").removeprefix("/set_rules").strip()
         if not text:
             raise ValueError("Формат: /set_rules <текст>")
@@ -173,7 +174,7 @@ def build_organizer_router(context: RouterContext) -> Router:
 
     @router.message(Command("create_tournament"))
     async def create_tournament_handler(message: Message) -> None:
-        actor = organizer_check(message, "/create_tournament")
+        actor = admin_check(message, "/create_tournament")
         parts = (message.text or "").split()
         if len(parts) != 2:
             raise ValueError("Формат: /create_tournament <число_столов>")
@@ -184,7 +185,7 @@ def build_organizer_router(context: RouterContext) -> Router:
 
     @router.message(Command("open_registration"))
     async def open_registration_handler(message: Message) -> None:
-        actor = organizer_check(message, "/open_registration")
+        actor = admin_check(message, "/open_registration")
         undo_service.snapshot(actor, "/open_registration")
         tournament = tournament_service.open_registration()
         log_ok(actor, "/open_registration", "tournament:1", {"status": tournament.status.value})
@@ -192,7 +193,7 @@ def build_organizer_router(context: RouterContext) -> Router:
 
     @router.message(Command("set_round_number"))
     async def set_round_number_handler(message: Message) -> None:
-        actor = organizer_check(message, "/set_round_number")
+        actor = admin_check(message, "/set_round_number")
         parts = (message.text or "").split()
         if len(parts) < 2:
             raise ValueError("Формат: /set_round_number <n> [confirm]")
@@ -205,10 +206,10 @@ def build_organizer_router(context: RouterContext) -> Router:
             f"Число туров установлено: {tournament.number_of_rounds}. Рекомендация системы: {recommendation}."
         )
 
-    @router.message(Command("prepare_turnament"))
+    @router.message(Command("prepare_tournament"))
     async def prepare_tournament_handler(message: Message) -> None:
-        actor = organizer_check(message, "/prepare_turnament")
-        undo_service.snapshot(actor, "/prepare_turnament")
+        actor = admin_check(message, "/prepare_tournament")
+        undo_service.snapshot(actor, "/prepare_tournament")
         tournament_service.prepare_tournament()
         players = sorted(player_repo.list_all(), key=lambda player: (-player.rating, player.id or 0))
         tables = table_repo.list_all()
@@ -218,7 +219,7 @@ def build_organizer_router(context: RouterContext) -> Router:
                 player.current_board = table.number
                 player.seat_hint = f"Стол {table.number}, место {index}"
                 player_repo.update(player)
-        log_ok(actor, "/prepare_turnament", "tournament:1", {"prepared": True})
+        log_ok(actor, "/prepare_tournament", "tournament:1", {"prepared": True})
         await notify_players(
             message,
             lambda player: (
@@ -230,14 +231,15 @@ def build_organizer_router(context: RouterContext) -> Router:
 
     @router.message(Command("start_tournament"))
     async def start_tournament_handler(message: Message) -> None:
-        actor = organizer_check(message, "/start_tournament")
+        actor = admin_check(message, "/start_tournament")
         undo_service.snapshot(actor, "/start_tournament")
         tournament_service.start_tournament()
         outcome = pairing_service.generate_next_round(1, actor, force=False)
         if outcome.needs_confirmation:
             log_ok(actor, "/start_tournament", "tournament:1", {"status": "ongoing", "needs_confirmation": True})
             await message.answer(
-                f"Требуется подтверждение генерации тура: {outcome.confirmation_reason}\nИспользуйте /confirm_next_round."
+                "Требуется подтверждение генерации тура: "
+                f"{outcome.confirmation_reason}\nИспользуйте /confirm_next_round."
             )
             return
 
@@ -245,12 +247,13 @@ def build_organizer_router(context: RouterContext) -> Router:
         await notify_players(message, lambda _: f"Турнир начался. Стартует тур {outcome.round_number}.")
         for game in outcome.games:
             await message.answer(
-                f"Тур {outcome.round_number}: стол {game.board_number} - {game.white_player_id} vs {game.black_player_id}"
+                f"Тур {outcome.round_number}: стол {game.board_number} - "
+                f"{game.white_player_id} vs {game.black_player_id}"
             )
 
-    @router.message(Command("tournament_statuc"))
+    @router.message(Command("tournament_status"))
     async def tournament_status_handler(message: Message) -> None:
-        organizer_check(message, "/tournament_statuc")
+        admin_check(message, "/tournament_status")
         summary = tournament_service.status_summary()
         await message.answer(
             "Состояние турнира:\n"
@@ -264,7 +267,7 @@ def build_organizer_router(context: RouterContext) -> Router:
 
     @router.message(Command("end_round"))
     async def end_round_handler(message: Message) -> None:
-        actor = organizer_check(message, "/end_round")
+        actor = admin_check(message, "/end_round")
         undo_service.snapshot(actor, "/end_round")
         tournament_service.end_current_round()
         log_ok(actor, "/end_round", "round:current", {"closed": True})
@@ -273,7 +276,7 @@ def build_organizer_router(context: RouterContext) -> Router:
 
     @router.message(Command("next_round"))
     async def next_round_handler(message: Message) -> None:
-        actor = organizer_check(message, "/next_round")
+        actor = admin_check(message, "/next_round")
         undo_service.snapshot(actor, "/next_round")
         outcome = pairing_service.generate_next_round(1, actor, force=False)
         if outcome.needs_confirmation:
@@ -287,24 +290,26 @@ def build_organizer_router(context: RouterContext) -> Router:
         await notify_players(message, lambda _: f"Начался тур {outcome.round_number}.")
         for game in outcome.games:
             await message.answer(
-                f"Тур {outcome.round_number}: стол {game.board_number} - {game.white_player_id} vs {game.black_player_id}"
+                f"Тур {outcome.round_number}: стол {game.board_number} - "
+                f"{game.white_player_id} vs {game.black_player_id}"
             )
 
     @router.message(Command("confirm_next_round"))
     async def confirm_next_round_handler(message: Message) -> None:
-        actor = organizer_check(message, "/confirm_next_round")
+        actor = admin_check(message, "/confirm_next_round")
         undo_service.snapshot(actor, "/confirm_next_round")
         outcome = pairing_service.confirm_next_round(1, actor)
         log_ok(actor, "/confirm_next_round", f"round:{outcome.round_number}", {"forced": True})
         await notify_players(message, lambda _: f"Подтвержден старт тура {outcome.round_number}.")
         for game in outcome.games:
             await message.answer(
-                f"Тур {outcome.round_number}: стол {game.board_number} - {game.white_player_id} vs {game.black_player_id}"
+                f"Тур {outcome.round_number}: стол {game.board_number} - "
+                f"{game.white_player_id} vs {game.black_player_id}"
             )
 
     @router.message(Command("round"))
     async def round_handler(message: Message) -> None:
-        organizer_check(message, "/round")
+        admin_check(message, "/round")
         parts = (message.text or "").split()
         if len(parts) != 2:
             raise ValueError("Формат: /round <n>")
@@ -329,7 +334,7 @@ def build_organizer_router(context: RouterContext) -> Router:
 
     @router.message(Command("finish_tournament"))
     async def finish_tournament_handler(message: Message) -> None:
-        actor = organizer_check(message, "/finish_tournament")
+        actor = admin_check(message, "/finish_tournament")
         undo_service.snapshot(actor, "/finish_tournament")
         tournament_service.finish_tournament()
         log_ok(actor, "/finish_tournament", "tournament:1", {"status": "finished"})
@@ -337,23 +342,26 @@ def build_organizer_router(context: RouterContext) -> Router:
         positions = {row.telegram_id: row.position for row in standings}
         await notify_players(
             message,
-            lambda player: (
-                f"Турнир завершен. Ваша итоговая позиция: {positions.get(player.telegram_id, '-')}"
-            ),
+            lambda player: f"Турнир завершен. Ваша итоговая позиция: {positions.get(player.telegram_id, '-')}",
         )
         top_lines = [f"{row.position}. {row.full_name} - {row.score}" for row in standings]
         await message.answer("Турнир завершен.\n" + "\n".join(top_lines))
 
     @router.message(Command("undo_last_action"))
     async def undo_last_action_handler(message: Message) -> None:
-        actor = organizer_check(message, "/undo_last_action")
-        undo_service.undo_last_organizer_action(actor)
-        log_ok(actor, "/undo_last_action", "undo:last", {"restored": True})
-        await message.answer("Последнее действие организатора отменено.")
+        actor = admin_check(message, "/undo_last_action")
+        undone = undo_service.undo_last_admin_action(actor)
+        log_ok(
+            actor,
+            "/undo_last_action",
+            f"undo:{undone.snapshot_id}",
+            {"restored": True, "undone_action": undone.undone_action},
+        )
+        await message.answer(f"Отменено действие: {undone.undone_action}.")
 
     @router.message(Command("set_player_rating"))
     async def set_player_rating_handler(message: Message) -> None:
-        actor = organizer_check(message, "/set_player_rating")
+        actor = admin_check(message, "/set_player_rating")
         parts = (message.text or "").split()
         if len(parts) != 3:
             raise ValueError("Формат: /set_player_rating <player_id> <rating>")
@@ -365,3 +373,4 @@ def build_organizer_router(context: RouterContext) -> Router:
         await message.answer(f"Новый рейтинг игрока {player.full_name}: {player.rating}")
 
     return router
+

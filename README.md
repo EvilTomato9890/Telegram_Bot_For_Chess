@@ -49,7 +49,7 @@ pip install -r requirements.txt
 Скопируйте `.env.example` в `.env` и заполните значения:
 
 ```env
-TOKEN=1234567890:AA...your_bot_token
+TOKEN=1234567890:AA...real_bot_token
 DB_URL=sqlite:///data/tournament.db
 ADMIN_IDS=111111111
 ARBITRS_IDS=222222222,333333333
@@ -69,6 +69,11 @@ python -m repositories.schema.init_db sqlite:///data/tournament.db
 ```bash
 python main.py
 ```
+
+## Роли
+- `PLAYER`
+- `ARBITRATOR`
+- `ADMIN` (wire-value в БД: `organizer`)
 
 ## Команды по ролям
 ### PLAYER
@@ -90,7 +95,7 @@ python main.py
 - `/approve_result <game_id> <result>`
 - `/close_ticket <ticket_id>`
 
-### ORGANIZER
+### ADMIN
 - Все команды арбитра
 - `/add_player <telegram_id|@username> <name>`
 - `/disqualify <player_id>`
@@ -101,9 +106,9 @@ python main.py
 - `/create_tournament <tables_count>`
 - `/open_registration`
 - `/set_round_number <n> [confirm]`
-- `/prepare_turnament`
+- `/prepare_tournament`
 - `/start_tournament`
-- `/tournament_statuc`
+- `/tournament_status`
 - `/end_round`
 - `/next_round`
 - `/confirm_next_round`
@@ -112,41 +117,41 @@ python main.py
 - `/undo_last_action`
 - `/set_player_rating <player_id> <rating>`
 
+## UX стартового экрана
+- `/start` показывает 2 inline-кнопки:
+  - `Регистрация`
+  - `Мой турнир`
+- Кнопка `Мой турнир` открывает основное reply-меню команд игрока.
+
 ## Логи
 - Console: `DEBUG/INFO/WARNING/ERROR`
-- Audit: файл `AUDIT_LOG_PATH` в JSON c полями:
+- Audit: файл `AUDIT_LOG_PATH` в JSON с полями:
   `timestamp, actor_id, roles, command, entity, before, after, result, reason`
 
 ## Минимальные сценарии
 ### 1. Подготовка и старт
-1. Организатор: `/create_tournament 8`
-2. Организатор: `/open_registration`
+1. Админ: `/create_tournament 8`
+2. Админ: `/open_registration`
 3. Игроки: `/register me 1500 Иван Иванов`
-4. Организатор: `/set_round_number 5`
-5. Организатор: `/prepare_turnament`
-6. Организатор: `/start_tournament`
+4. Админ: `/set_round_number 5`
+5. Админ: `/prepare_tournament`
+6. Админ: `/start_tournament`
 
 ### 2. Проведение тура
 1. Игрок: `/my_next`
 2. Игрок: `/report` -> кнопка результата
-3. При конфликте репортов: повтор `/report` или `/create_ticket arbitr ...`
+3. При конфликте отчетов: повтор `/report` или `/create_ticket arbitr ...`
 4. Арбитр: `/approve_result <game_id> <result>` при споре
-5. Организатор: `/end_round`, затем `/next_round`
+5. Админ: `/end_round`, затем `/next_round`
 
 ### 3. Завершение
 1. После последнего тура: `/end_round`
-2. Организатор: `/finish_tournament`
+2. Админ: `/finish_tournament`
 3. Игроки: `/standings` и `/my_score`
 
 ## Тесты
 ```bash
 python -m pytest
+python -m mypy --strict .
 ```
-
-## Важные допущения
-- В системе всегда один турнир (`id=1`).
-- Рекомендация числа туров: `ceil(log2(N))`.
-- Тай-брейки: `Buchholz > Median Buchholz > Sonneborn-Berger`.
-- `forfeit` трактуется как победа белых (допущение фиксировано в коде).
-- Подтверждение неустранимых повторов: `/next_round` -> `/confirm_next_round`.
 

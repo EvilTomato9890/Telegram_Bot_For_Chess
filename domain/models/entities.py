@@ -111,7 +111,7 @@ class Ticket:
 
 @dataclass(slots=True)
 class UndoSnapshot:
-    """Serialized DB snapshot for organizer undo."""
+    """Serialized DB snapshot for admin undo."""
 
     id: int | None
     actor_telegram_id: int

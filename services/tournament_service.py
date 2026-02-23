@@ -6,7 +6,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 import math
 
-from domain.models import RoundStatus, Table, Tournament, TournamentStatus
+from domain.models import PlayerStatus, RoundStatus, Table, Tournament, TournamentStatus
 from repositories import (
     GameReportRepository,
     GameRepository,
@@ -75,9 +75,6 @@ class TournamentService:
             conn.execute("DELETE FROM tables")
 
         # Tables are global for tournament lifecycle; recreate from scratch.
-        existing_tables = self._table_repo.list_all()
-        for table in existing_tables:
-            self._table_repo.remove_by_number(table.number)
         for number in range(1, number_of_tables + 1):
             self._table_repo.add(Table(id=None, number=number, location=f"Стол {number}", place_hint=None))
 
@@ -107,7 +104,7 @@ class TournamentService:
         if rounds != recommendation and not confirm:
             raise ValueError(
                 f"Рекомендованное число туров: {recommendation}. "
-                f"Повторите команду с confirm для подтверждения."
+                "Повторите команду с confirm для подтверждения."
             )
         updated = self._tournament_repo.update_status(
             tournament.status,
@@ -134,12 +131,40 @@ class TournamentService:
             pending_pairing_payload=tournament.pending_pairing_payload,
         )
 
+    def validate_prepare_readiness(self) -> list[str]:
+        """Validate all hard preconditions required by /prepare_tournament."""
+
+        problems: list[str] = []
+        tournament = self.ensure_tournament()
+        if tournament.status != TournamentStatus.REGISTRATION:
+            problems.append("статус турнира должен быть registration")
+        if tournament.number_of_rounds <= 0:
+            problems.append("не задано число туров (/set_round_number)")
+
+        tables_count = len(self._table_repo.list_all())
+        active_players = self._count_active_players()
+
+        if tables_count < 1:
+            problems.append("не добавлено ни одного стола")
+        if active_players < 2:
+            problems.append("нужно минимум 2 активных участника")
+        if tables_count > 0 and active_players > tables_count * 2:
+            problems.append(
+                f"активных участников {active_players}, но вместимость текущих столов только {tables_count * 2}"
+            )
+        required_tables = active_players // 2
+        if tables_count < required_tables:
+            problems.append(f"недостаточно столов: нужно минимум {required_tables}, доступно {tables_count}")
+        return problems
+
     def prepare_tournament(self) -> Tournament:
         """Lock registration and mark tournament as prepared."""
 
+        problems = self.validate_prepare_readiness()
+        if problems:
+            raise ValueError("Подготовка невозможна:\n- " + "\n- ".join(problems))
+
         tournament = self.ensure_tournament()
-        if tournament.status != TournamentStatus.REGISTRATION:
-            raise ValueError("Подготовка доступна только в статусе registration.")
         return self._tournament_repo.update_status(
             TournamentStatus.REGISTRATION,
             prepared=True,
@@ -156,7 +181,7 @@ class TournamentService:
         if tournament.status != TournamentStatus.REGISTRATION:
             raise ValueError("Турнир можно стартовать только из registration.")
         if not tournament.prepared:
-            raise ValueError("Сначала выполните /prepare_turnament.")
+            raise ValueError("Сначала выполните /prepare_tournament.")
         if tournament.number_of_rounds <= 0:
             raise ValueError("Сначала задайте число туров через /set_round_number.")
         if self._count_active_players() < 2:
@@ -239,6 +264,5 @@ class TournamentService:
         return len(self._player_repo.list_all())
 
     def _count_active_players(self) -> int:
-        from domain.models import PlayerStatus
-
         return sum(1 for player in self._player_repo.list_all() if player.status == PlayerStatus.ACTIVE)
+

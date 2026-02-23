@@ -38,7 +38,7 @@ class TicketService:
         if not normalized_description:
             raise ValueError("Описание тикета не может быть пустым.")
 
-        target_role = Role.ARBITRATOR if ticket_type == TicketType.ARBITR else Role.ORGANIZER
+        target_role = Role.ARBITRATOR if ticket_type == TicketType.ARBITR else Role.ADMIN
         assignee = self._select_assignee(target_role)
         status = TicketStatus.ASSIGNED if assignee is not None else TicketStatus.OPEN
         ticket = self._ticket_repo.add(
@@ -124,9 +124,8 @@ class TicketService:
 
         if ticket.author_telegram_id == actor_id:
             return True
-        if Role.ORGANIZER in actor_roles:
+        if Role.ADMIN in actor_roles:
             return True
         if Role.ARBITRATOR in actor_roles and ticket.ticket_type == TicketType.ARBITR:
             return True
         return False
-

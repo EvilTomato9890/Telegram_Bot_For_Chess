@@ -48,14 +48,14 @@ class RegistrationService:
             )
         )
 
-    def add_player_by_organizer(
+    def add_player_by_admin(
         self,
         telegram_id: int,
         username: str | None,
         full_name: str,
         rating: int = 0,
     ) -> Player:
-        """Organizer command to append participant."""
+        """Admin command to append participant."""
 
         tournament = self._require_tournament()
         if tournament.status not in {TournamentStatus.DRAFT, TournamentStatus.REGISTRATION}:
@@ -90,7 +90,7 @@ class RegistrationService:
 
         tournament = self._require_tournament()
         if tournament.prepared:
-            raise ValueError("После /prepare_turnament менять рейтинг запрещено.")
+            raise ValueError("После /prepare_tournament менять рейтинг запрещено.")
         player = self._player_repo.get_by_id(player_id)
         if player is None:
             raise ValueError("Игрок не найден.")
@@ -120,3 +120,4 @@ class RegistrationService:
         if tournament is None:
             raise ValueError("Турнир еще не создан. Используйте /create_tournament.")
         return tournament
+

@@ -1,10 +1,12 @@
-"""Organizer undo support."""
+"""Admin undo support."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 import json
+from typing import Any, cast
 
+from domain.dto import UndoResult
 from domain.models import UndoSnapshot
 from infra.db import Database
 from infra.logging import AuditLogger
@@ -59,18 +61,22 @@ class UndoService:
             )
             return snapshot
 
-    def undo_last_organizer_action(self, actor_id: int) -> None:
-        """Restore most recent unrestored snapshot."""
+    def undo_last_admin_action(self, actor_id: int) -> UndoResult:
+        """Restore most recent unrestored snapshot and return undo payload."""
 
         snapshot = self._undo_repo.get_last_unrestored()
         if snapshot is None or snapshot.id is None:
             raise ValueError("Нет действий для отката.")
         payload = json.loads(snapshot.snapshot_json)
+        payload_map = cast(dict[str, Any], payload)
         with self._database.transaction() as conn:
             for table in self.SNAPSHOT_TABLES:
                 conn.execute(f"DELETE FROM {table}")
             for table in self.SNAPSHOT_TABLES:
-                rows: list[dict[str, object]] = payload.get(table, [])
+                rows_raw = payload_map.get(table, [])
+                if not isinstance(rows_raw, list):
+                    continue
+                rows: list[dict[str, object]] = [row for row in rows_raw if isinstance(row, dict)]
                 if not rows:
                     continue
                 columns = list(rows[0].keys())
@@ -83,13 +89,20 @@ class UndoService:
                     )
             self._undo_repo.mark_restored(snapshot.id, connection=conn)
 
+        restored_at = datetime.now(UTC)
         self._audit_logger.log_event(
             actor_id=actor_id,
             roles=[role.value for role in self._acl_service.resolve_roles(actor_id)],
             command="/undo_last_action",
             entity=f"undo:{snapshot.id}",
             before={"action": snapshot.action_name},
-            after={"restored": True},
+            after={"restored": True, "undone_action": snapshot.action_name},
             result="ok",
             reason=None,
         )
+        return UndoResult(
+            snapshot_id=snapshot.id,
+            undone_action=snapshot.action_name,
+            restored_at=restored_at,
+        )
+

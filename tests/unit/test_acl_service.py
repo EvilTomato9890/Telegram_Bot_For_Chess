@@ -6,7 +6,7 @@ def test_acl_or_logic_for_multi_role_user() -> None:
     services = build_services(build_db_url("acl"))
     acl = services["acl_service"]
 
-    # organizer from config
+    # admin from config
     assert acl.can_execute(9001, "/set_rules") is True
     # arbitrator from config
     assert acl.can_execute(9002, "/approve_result") is True
@@ -14,6 +14,16 @@ def test_acl_or_logic_for_multi_role_user() -> None:
     assert acl.can_execute(777, "/register") is True
     # but non-public player commands require real player role
     assert acl.can_execute(777, "/my_score") is False
+
+
+def test_acl_registry_contains_new_admin_commands_only() -> None:
+    services = build_services(build_db_url("acl_commands"))
+    acl = services["acl_service"]
+
+    assert acl.can_execute(9001, "/prepare_tournament") is True
+    assert acl.can_execute(9001, "/tournament_status") is True
+    assert acl.can_execute(9001, "/prepare_turnament") is False
+    assert acl.can_execute(9001, "/tournament_statuc") is False
 
 
 def test_runtime_grants_are_resolved() -> None:
@@ -25,6 +35,9 @@ def test_runtime_grants_are_resolved() -> None:
     assert acl.can_execute(777, "/approve_result") is True
     role_repo.append(777, Role.ARBITRATOR, "revoke")
     assert acl.can_execute(777, "/approve_result") is False
+
+    role_repo.append(778, Role.ADMIN, "grant")
+    assert acl.can_execute(778, "/set_rules") is True
 
 
 def test_player_role_is_granted_after_registration() -> None:

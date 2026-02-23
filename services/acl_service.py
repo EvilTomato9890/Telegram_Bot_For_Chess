@@ -10,38 +10,38 @@ from repositories import PlayerRepository, RoleGrantRepository
 
 
 COMMAND_REGISTRY: tuple[CommandSpec, ...] = (
-    CommandSpec("/help", frozenset({Role.PLAYER, Role.ARBITRATOR, Role.ORGANIZER}), "Список доступных команд"),
-    CommandSpec("/start", frozenset({Role.PLAYER, Role.ARBITRATOR, Role.ORGANIZER}), "Стартовое меню"),
-    CommandSpec("/rules", frozenset({Role.PLAYER, Role.ARBITRATOR, Role.ORGANIZER}), "Правила турнира"),
+    CommandSpec("/help", frozenset({Role.PLAYER, Role.ARBITRATOR, Role.ADMIN}), "Список доступных команд"),
+    CommandSpec("/start", frozenset({Role.PLAYER, Role.ARBITRATOR, Role.ADMIN}), "Стартовое меню"),
+    CommandSpec("/rules", frozenset({Role.PLAYER, Role.ARBITRATOR, Role.ADMIN}), "Правила турнира"),
     CommandSpec("/get_game_id", frozenset({Role.PLAYER}), "ID своей последней/текущей партии"),
     CommandSpec("/my_next", frozenset({Role.PLAYER}), "Следующая партия"),
-    CommandSpec("/schedule", frozenset({Role.PLAYER, Role.ARBITRATOR, Role.ORGANIZER}), "Расписание туров"),
+    CommandSpec("/schedule", frozenset({Role.PLAYER, Role.ARBITRATOR, Role.ADMIN}), "Расписание туров"),
     CommandSpec("/my_score", frozenset({Role.PLAYER}), "Мои очки и тай-брейки"),
-    CommandSpec("/standings", frozenset({Role.PLAYER, Role.ARBITRATOR, Role.ORGANIZER}), "Таблица лидеров"),
+    CommandSpec("/standings", frozenset({Role.PLAYER, Role.ARBITRATOR, Role.ADMIN}), "Таблица лидеров"),
     CommandSpec("/report", frozenset({Role.PLAYER}), "Сообщить результат своей партии"),
-    CommandSpec("/register", frozenset({Role.PLAYER, Role.ARBITRATOR, Role.ORGANIZER}), "Регистрация участника"),
-    CommandSpec("/create_ticket", frozenset({Role.PLAYER, Role.ARBITRATOR, Role.ORGANIZER}), "Создать тикет"),
-    CommandSpec("/close_ticket", frozenset({Role.PLAYER, Role.ARBITRATOR, Role.ORGANIZER}), "Закрыть тикет"),
-    CommandSpec("/approve_result", frozenset({Role.ARBITRATOR, Role.ORGANIZER}), "Подтвердить результат игры"),
-    CommandSpec("/add_player", frozenset({Role.ORGANIZER}), "Добавить участника"),
-    CommandSpec("/disqualify", frozenset({Role.ORGANIZER}), "Дисквалифицировать игрока"),
-    CommandSpec("/tables", frozenset({Role.ORGANIZER}), "Список столов"),
-    CommandSpec("/add_table", frozenset({Role.ORGANIZER}), "Добавить стол"),
-    CommandSpec("/remove_table", frozenset({Role.ORGANIZER}), "Удалить стол"),
-    CommandSpec("/set_rules", frozenset({Role.ORGANIZER}), "Задать регламент"),
-    CommandSpec("/create_tournament", frozenset({Role.ORGANIZER}), "Создать черновик турнира"),
-    CommandSpec("/open_registration", frozenset({Role.ORGANIZER}), "Открыть регистрацию"),
-    CommandSpec("/set_round_number", frozenset({Role.ORGANIZER}), "Задать число туров"),
-    CommandSpec("/prepare_turnament", frozenset({Role.ORGANIZER}), "Подготовить турнир"),
-    CommandSpec("/start_tournament", frozenset({Role.ORGANIZER}), "Запустить турнир"),
-    CommandSpec("/tournament_statuc", frozenset({Role.ORGANIZER}), "Состояние турнира"),
-    CommandSpec("/end_round", frozenset({Role.ORGANIZER}), "Закрыть текущий тур"),
-    CommandSpec("/next_round", frozenset({Role.ORGANIZER}), "Сгенерировать следующий тур"),
-    CommandSpec("/confirm_next_round", frozenset({Role.ORGANIZER}), "Подтвердить генерацию с повторами"),
-    CommandSpec("/round", frozenset({Role.ORGANIZER}), "Пары/результаты тура"),
-    CommandSpec("/finish_tournament", frozenset({Role.ORGANIZER}), "Завершить турнир"),
-    CommandSpec("/undo_last_action", frozenset({Role.ORGANIZER}), "Откат последнего действия организатора"),
-    CommandSpec("/set_player_rating", frozenset({Role.ORGANIZER}), "Изменить рейтинг игрока"),
+    CommandSpec("/register", frozenset({Role.PLAYER, Role.ARBITRATOR, Role.ADMIN}), "Регистрация участника"),
+    CommandSpec("/create_ticket", frozenset({Role.PLAYER, Role.ARBITRATOR, Role.ADMIN}), "Создать тикет"),
+    CommandSpec("/close_ticket", frozenset({Role.PLAYER, Role.ARBITRATOR, Role.ADMIN}), "Закрыть тикет"),
+    CommandSpec("/approve_result", frozenset({Role.ARBITRATOR, Role.ADMIN}), "Подтвердить результат игры"),
+    CommandSpec("/add_player", frozenset({Role.ADMIN}), "Добавить участника"),
+    CommandSpec("/disqualify", frozenset({Role.ADMIN}), "Дисквалифицировать игрока"),
+    CommandSpec("/tables", frozenset({Role.ADMIN}), "Список столов"),
+    CommandSpec("/add_table", frozenset({Role.ADMIN}), "Добавить стол"),
+    CommandSpec("/remove_table", frozenset({Role.ADMIN}), "Удалить стол"),
+    CommandSpec("/set_rules", frozenset({Role.ADMIN}), "Задать регламент"),
+    CommandSpec("/create_tournament", frozenset({Role.ADMIN}), "Создать черновик турнира"),
+    CommandSpec("/open_registration", frozenset({Role.ADMIN}), "Открыть регистрацию"),
+    CommandSpec("/set_round_number", frozenset({Role.ADMIN}), "Задать число туров"),
+    CommandSpec("/prepare_tournament", frozenset({Role.ADMIN}), "Подготовить турнир"),
+    CommandSpec("/start_tournament", frozenset({Role.ADMIN}), "Запустить турнир"),
+    CommandSpec("/tournament_status", frozenset({Role.ADMIN}), "Состояние турнира"),
+    CommandSpec("/end_round", frozenset({Role.ADMIN}), "Закрыть текущий тур"),
+    CommandSpec("/next_round", frozenset({Role.ADMIN}), "Сгенерировать следующий тур"),
+    CommandSpec("/confirm_next_round", frozenset({Role.ADMIN}), "Подтвердить генерацию с повторами"),
+    CommandSpec("/round", frozenset({Role.ADMIN}), "Пары/результаты тура"),
+    CommandSpec("/finish_tournament", frozenset({Role.ADMIN}), "Завершить турнир"),
+    CommandSpec("/undo_last_action", frozenset({Role.ADMIN}), "Откат последнего действия админа"),
+    CommandSpec("/set_player_rating", frozenset({Role.ADMIN}), "Изменить рейтинг игрока"),
 )
 
 
@@ -60,7 +60,7 @@ class AccessControlService:
 
         roles: set[Role] = set()
         if telegram_id in self.admin_ids:
-            roles.add(Role.ORGANIZER)
+            roles.add(Role.ADMIN)
         if telegram_id in self.arbitrs_ids:
             roles.add(Role.ARBITRATOR)
         roles.update(self.role_grants_repo.resolve_roles(telegram_id))
@@ -96,10 +96,10 @@ class AccessControlService:
         return HelpView(actor_id=telegram_id, commands=commands)
 
     def user_ids_with_role(self, role: Role) -> list[int]:
-        """Return known ids for organizer/arbitrator role queueing."""
+        """Return known ids for admin/arbitrator role queueing."""
 
         candidates: set[int] = set()
-        if role == Role.ORGANIZER:
+        if role == Role.ADMIN:
             candidates.update(self.admin_ids)
         if role == Role.ARBITRATOR:
             candidates.update(self.arbitrs_ids)
@@ -124,3 +124,4 @@ class AccessControlService:
             if spec.name == command:
                 return spec
         return None
+

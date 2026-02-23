@@ -75,7 +75,7 @@ class ResultService:
         return ReportOutcome(game_id=game_id, status="conflict", message="Репорты различаются.")
 
     def approve_result(self, game_id: int, raw_result: str) -> None:
-        """Arbitrator/organizer overrides game result."""
+        """Arbitrator/admin overrides game result."""
 
         game = self._game_repo.get_by_id(game_id)
         if game is None:

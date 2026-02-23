@@ -53,21 +53,26 @@ class AccessControlService:
     arbitrs_ids: set[int]
     role_grants_repo: RoleGrantRepository
     player_repo: PlayerRepository
+    _PUBLIC_COMMANDS: frozenset[str] = frozenset({"/start", "/help", "/register"})
 
     def resolve_roles(self, telegram_id: int) -> set[Role]:
         """Resolve merged roles from config, runtime grants and player registrations."""
 
-        roles: set[Role] = {Role.PLAYER}
+        roles: set[Role] = set()
         if telegram_id in self.admin_ids:
             roles.add(Role.ORGANIZER)
         if telegram_id in self.arbitrs_ids:
             roles.add(Role.ARBITRATOR)
         roles.update(self.role_grants_repo.resolve_roles(telegram_id))
+        if self.player_repo.get_by_telegram_id(telegram_id) is not None:
+            roles.add(Role.PLAYER)
         return roles
 
     def can_execute(self, telegram_id: int, command: str) -> bool:
         """Check if user can run command by OR-role policy."""
 
+        if command in self._PUBLIC_COMMANDS:
+            return True
         spec = self._find_spec(command)
         if spec is None:
             return False
@@ -83,7 +88,11 @@ class AccessControlService:
         """Build help view of commands available for actor."""
 
         roles = self.resolve_roles(telegram_id)
-        commands = tuple(spec for spec in COMMAND_REGISTRY if spec.roles.intersection(roles))
+        commands = tuple(
+            spec
+            for spec in COMMAND_REGISTRY
+            if spec.name in self._PUBLIC_COMMANDS or spec.roles.intersection(roles)
+        )
         return HelpView(actor_id=telegram_id, commands=commands)
 
     def user_ids_with_role(self, role: Role) -> list[int]:

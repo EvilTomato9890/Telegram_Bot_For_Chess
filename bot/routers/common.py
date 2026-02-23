@@ -6,9 +6,8 @@ from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 
-from domain.models import TicketType
+from domain.models import Role, TicketType
 from keyboards import player_menu_keyboard, report_keyboard, start_keyboard
-from services import COMMAND_REGISTRY
 
 
 def build_common_router(context: dict[str, object]) -> Router:
@@ -64,7 +63,10 @@ def build_common_router(context: dict[str, object]) -> Router:
             return
         acl.require(message.from_user.id, "/standings")
         parts = (message.text or "").split()
-        top_n = default_top if len(parts) < 2 else int(parts[1])
+        try:
+            top_n = default_top if len(parts) < 2 else int(parts[1])
+        except ValueError as exc:
+            raise ValueError("Формат: /standings [top_n]") from exc
         rows = scoring_service.standings(top_n)
         player_position = None
         for row in scoring_service.recalculate():
@@ -99,10 +101,17 @@ def build_common_router(context: dict[str, object]) -> Router:
         if message.from_user is None:
             return
         acl.require(message.from_user.id, "/close_ticket")
+        roles = acl.resolve_roles(message.from_user.id)
         parts = (message.text or "").split()
         ticket_id: int | None = None
         if len(parts) > 1:
-            ticket_id = int(parts[1])
+            try:
+                ticket_id = int(parts[1])
+            except ValueError as exc:
+                raise ValueError("Формат: /close_ticket <ticket_id>") from exc
+        elif Role.ARBITRATOR in roles or Role.ORGANIZER in roles:
+            if Role.PLAYER not in roles:
+                raise ValueError("Для арбитра/организатора используйте /close_ticket <ticket_id>.")
         closed = ticket_service.close_ticket(actor_id=message.from_user.id, ticket_id=ticket_id)
         await message.answer(f"Тикет #{closed.id} закрыт.")
 
@@ -113,9 +122,11 @@ def build_common_router(context: dict[str, object]) -> Router:
         acl.require(message.from_user.id, "/create_ticket")
         parts = (message.text or "").split(maxsplit=2)
         if len(parts) < 2:
-            await message.answer("Формат: /create_ticket <arbitr|organizer> <описание>")
-            return
-        ticket_type = TicketType(parts[1].strip().lower())
+            raise ValueError("Формат: /create_ticket <arbitr|organizer> <описание>")
+        try:
+            ticket_type = TicketType(parts[1].strip().lower())
+        except ValueError as exc:
+            raise ValueError("Тип тикета должен быть arbitr или organizer.") from exc
         description = parts[2] if len(parts) > 2 else "Без описания"
         ticket = ticket_service.create_ticket(
             actor_id=message.from_user.id,
@@ -149,9 +160,10 @@ def build_common_router(context: dict[str, object]) -> Router:
             result="ok",
             reason=None,
         )
-        await callback.message.answer(f"Игра {outcome.game_id}: {outcome.message}")  # type: ignore[union-attr]
-        for notification in notification_service.flush():
-            await callback.message.answer(notification)  # type: ignore[union-attr]
+        if callback.message is not None:
+            await callback.message.answer(f"Игра {outcome.game_id}: {outcome.message}")
+            for notification in notification_service.flush():
+                await callback.message.answer(notification)
         await callback.answer()
 
     @router.message(Command("my_score"))
@@ -211,13 +223,5 @@ def build_common_router(context: dict[str, object]) -> Router:
             f"соперник {opponent_name}, локация: {location}, место: {place}"
         )
 
-    @router.message(Command("commands_dump"))
-    async def commands_dump_handler(message: Message) -> None:
-        """Debug-only command for quick command registry visibility."""
-
-        if message.from_user is None:
-            return
-        lines = [f"{spec.name}: {','.join(role.value for role in spec.roles)}" for spec in COMMAND_REGISTRY]
-        await message.answer("\n".join(lines))
-
     return router
+

@@ -49,7 +49,16 @@ def _rebuild_schema(db_path: Path) -> None:
     apply_migrations(db_path)
 
 
-def init_db(db_url: str) -> Path:
+def _incompatible_schema_error(db_path: Path) -> RuntimeError:
+    message = (
+        "Incompatible existing schema detected for "
+        f"{db_path}. Run `python -m repositories.schema.init_db "
+        f"sqlite:///{db_path.as_posix()} --rebuild` to recreate the database."
+    )
+    return RuntimeError(message)
+
+
+def init_db(db_url: str, *, rebuild_on_incompatible: bool = False) -> Path:
     if not db_url.startswith("sqlite:///"):
         raise ValueError("Only sqlite:/// URLs are supported by the bootstrap initializer")
 
@@ -57,21 +66,31 @@ def init_db(db_url: str) -> Path:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         apply_migrations(db_path)
-    except sqlite3.OperationalError:
-        # Backward-compatible recovery for incompatible historical schemas.
-        _rebuild_schema(db_path)
+    except sqlite3.OperationalError as exc:
+        if rebuild_on_incompatible:
+            _rebuild_schema(db_path)
+        else:
+            raise _incompatible_schema_error(db_path) from exc
     names = _table_names(db_path)
     if not _REQUIRED_TABLES.issubset(names):
-        _rebuild_schema(db_path)
+        if rebuild_on_incompatible:
+            _rebuild_schema(db_path)
+        else:
+            raise _incompatible_schema_error(db_path)
     return db_path
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Initialize application database")
     parser.add_argument("db_url", help="Database URL, e.g. sqlite:///data/tournament.db")
+    parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="Drop existing schema and recreate it when incompatible",
+    )
     args = parser.parse_args()
 
-    db_path = init_db(args.db_url)
+    db_path = init_db(args.db_url, rebuild_on_incompatible=args.rebuild)
     print(f"Database initialized at: {db_path}")
     return 0
 

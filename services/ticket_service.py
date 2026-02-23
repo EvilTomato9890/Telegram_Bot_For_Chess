@@ -67,8 +67,8 @@ class TicketService:
     def close_ticket(self, actor_id: int, ticket_id: int | None = None) -> Ticket:
         """Close ticket either by explicit id or own last open ticket."""
 
+        actor_roles = self._acl_service.resolve_roles(actor_id)
         if ticket_id is None:
-            # Player mode: close own last ticket.
             own = self._ticket_repo.list_open_by_author(actor_id)
             if not own:
                 raise ValueError("У вас нет открытых тикетов.")
@@ -77,9 +77,12 @@ class TicketService:
             ticket = self._ticket_repo.get_by_id(ticket_id)
             if ticket is None:
                 raise ValueError("Тикет не найден.")
+            if not self._can_close_ticket(actor_id=actor_id, actor_roles=actor_roles, ticket=ticket):
+                raise PermissionError("Недостаточно прав для закрытия этого тикета.")
 
         if ticket.status == TicketStatus.CLOSED:
             raise ValueError("Тикет уже закрыт.")
+
         closed = replace(
             ticket,
             status=TicketStatus.CLOSED,
@@ -89,7 +92,7 @@ class TicketService:
         stored = self._ticket_repo.update(closed)
         self._audit_logger.log_event(
             actor_id=actor_id,
-            roles=[role.value for role in self._acl_service.resolve_roles(actor_id)],
+            roles=[role.value for role in actor_roles],
             command="/close_ticket",
             entity=f"ticket:{stored.id}",
             before={"status": ticket.status.value},
@@ -111,4 +114,17 @@ class TicketService:
                 candidate,
             ),
         )
+
+    @staticmethod
+    def _can_close_ticket(*, actor_id: int, actor_roles: set[Role], ticket: Ticket) -> bool:
+        """Check ACL for explicit ticket closure."""
+
+        if ticket.author_telegram_id == actor_id:
+            return True
+        if Role.ORGANIZER in actor_roles:
+            # Organizer inherits arbitrator privileges and may close any ticket.
+            return True
+        if Role.ARBITRATOR in actor_roles and ticket.ticket_type == TicketType.ARBITR:
+            return True
+        return False
 

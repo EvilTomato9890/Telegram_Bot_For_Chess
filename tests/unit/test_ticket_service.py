@@ -1,5 +1,6 @@
 from domain.models import Role, TicketStatus, TicketType
 from tests.utils import build_db_url, build_services
+import pytest
 
 
 def test_ticket_service_assigns_least_loaded_assignee() -> None:
@@ -26,3 +27,11 @@ def test_ticket_close_without_id_closes_own_last_open() -> None:
     assert created.id == closed.id
     assert closed.status == TicketStatus.CLOSED
 
+
+def test_ticket_close_by_id_requires_owner_or_privileged_role() -> None:
+    services = build_services(build_db_url("ticket_acl"))
+    ticket_service = services["ticket_service"]
+
+    created = ticket_service.create_ticket(111, TicketType.ORGANIZER, "help")
+    with pytest.raises(PermissionError):
+        ticket_service.close_ticket(actor_id=777, ticket_id=created.id)

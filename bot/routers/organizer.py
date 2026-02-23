@@ -32,7 +32,13 @@ def build_organizer_router(context: dict[str, object]) -> Router:
         acl.require(message.from_user.id, command)
         return message.from_user.id
 
-    def log_ok(actor: int, command: str, entity: str, after: dict[str, object], before: dict[str, object] | None = None) -> None:
+    def log_ok(
+        actor: int,
+        command: str,
+        entity: str,
+        after: dict[str, object],
+        before: dict[str, object] | None = None,
+    ) -> None:
         audit_logger.log_event(
             actor_id=actor,
             roles=[role.value for role in acl.resolve_roles(actor)],
@@ -44,22 +50,46 @@ def build_organizer_router(context: dict[str, object]) -> Router:
             reason=None,
         )
 
+    async def notify_players(message: Message, text_builder) -> None:
+        """Notify every registered player; ignore delivery failures."""
+
+        for player in player_repo.list_all():
+            text = text_builder(player)
+            notification_service.notify(f"[TO:{player.telegram_id}] {text}")
+            try:
+                await message.bot.send_message(player.telegram_id, text)
+            except Exception:
+                continue
+
+    def parse_int(raw: str, *, field: str) -> int:
+        try:
+            return int(raw)
+        except ValueError as exc:
+            raise ValueError(f"{field} должен быть числом.") from exc
+
     @router.message(Command("add_player"))
     async def add_player_handler(message: Message) -> None:
         actor = organizer_check(message, "/add_player")
         parts = (message.text or "").split(maxsplit=2)
         if len(parts) < 3:
-            await message.answer("Формат: /add_player <telegram_id|@username> <имя>")
-            return
+            raise ValueError("Формат: /add_player <telegram_id|@username> <имя>")
         undo_service.snapshot(actor, "/add_player")
-        raw_id = parts[1]
+
+        raw_id = parts[1].strip()
         full_name = parts[2].strip()
         if raw_id.startswith("@"):
-            telegram_id = actor
             username = raw_id[1:]
+            candidate = next((item for item in player_repo.list_all() if item.username == username), None)
+            if candidate is None:
+                raise ValueError(
+                    "Для @username нужен уже известный пользователь. "
+                    "Иначе используйте numeric telegram_id."
+                )
+            telegram_id = candidate.telegram_id
         else:
-            telegram_id = int(raw_id)
+            telegram_id = parse_int(raw_id, field="telegram_id")
             username = None
+
         player = registration_service.add_player_by_organizer(
             telegram_id=telegram_id,
             username=username,
@@ -74,10 +104,9 @@ def build_organizer_router(context: dict[str, object]) -> Router:
         actor = organizer_check(message, "/disqualify")
         parts = (message.text or "").split()
         if len(parts) != 2:
-            await message.answer("Формат: /disqualify <player_id>")
-            return
+            raise ValueError("Формат: /disqualify <player_id>")
         undo_service.snapshot(actor, "/disqualify")
-        updated = registration_service.disqualify(int(parts[1]))
+        updated = registration_service.disqualify(parse_int(parts[1], field="player_id"))
         log_ok(actor, "/disqualify", f"player:{updated.id}", {"status": updated.status.value})
         await message.answer(f"Игрок {updated.full_name} дисквалифицирован.")
 
@@ -96,11 +125,12 @@ def build_organizer_router(context: dict[str, object]) -> Router:
         actor = organizer_check(message, "/add_table")
         parts = (message.text or "").split(maxsplit=2)
         if len(parts) < 3:
-            await message.answer("Формат: /add_table <номер> <локация>")
-            return
+            raise ValueError("Формат: /add_table <номер> <локация>")
         undo_service.snapshot(actor, "/add_table")
-        number = int(parts[1])
-        location = parts[2]
+        number = parse_int(parts[1], field="номер стола")
+        location = parts[2].strip()
+        if not location:
+            raise ValueError("Локация стола не может быть пустой.")
         table_repo.add(Table(id=None, number=number, location=location, place_hint=None))
         log_ok(actor, "/add_table", f"table:{number}", {"location": location})
         await message.answer(f"Стол {number} добавлен.")
@@ -110,20 +140,17 @@ def build_organizer_router(context: dict[str, object]) -> Router:
         actor = organizer_check(message, "/remove_table")
         parts = (message.text or "").split()
         if len(parts) != 2:
-            await message.answer("Формат: /remove_table <номер>")
-            return
-        number = int(parts[1])
+            raise ValueError("Формат: /remove_table <номер>")
+        number = parse_int(parts[1], field="номер стола")
         current_round = round_repo.get_current()
         if current_round and current_round.id:
             for game in game_repo.list_by_round(current_round.id):
-                if game.board_number == number and game.result is None:
-                    await message.answer("Нельзя удалить стол: он используется в текущем туре.")
-                    return
+                if game.board_number == number:
+                    raise ValueError("Нельзя удалить стол: он используется в текущем туре.")
         undo_service.snapshot(actor, "/remove_table")
         removed = table_repo.remove_by_number(number)
         if not removed:
-            await message.answer("Стол не найден.")
-            return
+            raise ValueError("Стол не найден.")
         log_ok(actor, "/remove_table", f"table:{number}", {"removed": True})
         await message.answer(f"Стол {number} удален.")
 
@@ -132,11 +159,11 @@ def build_organizer_router(context: dict[str, object]) -> Router:
         actor = organizer_check(message, "/set_rules")
         text = (message.text or "").removeprefix("/set_rules").strip()
         if not text:
-            await message.answer("Формат: /set_rules <текст>")
-            return
+            raise ValueError("Формат: /set_rules <текст>")
         undo_service.snapshot(actor, "/set_rules")
         tournament_service.set_rules(text)
         log_ok(actor, "/set_rules", "tournament:1", {"rules_updated": True})
+        await notify_players(message, lambda _: f"Обновлены правила турнира:\n{text}")
         await message.answer("Правила обновлены.")
 
     @router.message(Command("create_tournament"))
@@ -144,10 +171,9 @@ def build_organizer_router(context: dict[str, object]) -> Router:
         actor = organizer_check(message, "/create_tournament")
         parts = (message.text or "").split()
         if len(parts) != 2:
-            await message.answer("Формат: /create_tournament <число_столов>")
-            return
+            raise ValueError("Формат: /create_tournament <число_столов>")
         undo_service.snapshot(actor, "/create_tournament")
-        tournament = tournament_service.create_tournament(int(parts[1]))
+        tournament = tournament_service.create_tournament(parse_int(parts[1], field="число столов"))
         log_ok(actor, "/create_tournament", "tournament:1", {"status": tournament.status.value})
         await message.answer(f"Турнир создан в статусе {tournament.status.value}.")
 
@@ -164,9 +190,8 @@ def build_organizer_router(context: dict[str, object]) -> Router:
         actor = organizer_check(message, "/set_round_number")
         parts = (message.text or "").split()
         if len(parts) < 2:
-            await message.answer("Формат: /set_round_number <n> [confirm]")
-            return
-        rounds = int(parts[1])
+            raise ValueError("Формат: /set_round_number <n> [confirm]")
+        rounds = parse_int(parts[1], field="число туров")
         confirm = len(parts) > 2 and parts[2].lower() == "confirm"
         undo_service.snapshot(actor, "/set_round_number")
         tournament, recommendation = tournament_service.set_round_number(rounds, confirm=confirm)
@@ -189,6 +214,13 @@ def build_organizer_router(context: dict[str, object]) -> Router:
                 player.seat_hint = f"Стол {table.number}, место {index}"
                 player_repo.update(player)
         log_ok(actor, "/prepare_turnament", "tournament:1", {"prepared": True})
+        await notify_players(
+            message,
+            lambda player: (
+                "Турнир скоро начнется. "
+                f"Ваше место: {player.seat_hint or 'будет назначено позже'}."
+            ),
+        )
         await message.answer("Подготовка завершена. Регистрация закрыта для новых участников.")
 
     @router.message(Command("start_tournament"))
@@ -202,13 +234,14 @@ def build_organizer_router(context: dict[str, object]) -> Router:
             await message.answer(
                 f"Требуется подтверждение генерации тура: {outcome.confirmation_reason}\nИспользуйте /confirm_next_round."
             )
-        else:
-            log_ok(actor, "/start_tournament", "tournament:1", {"status": "ongoing", "round": outcome.round_number})
-            await message.answer(f"Турнир начат. Сгенерирован тур {outcome.round_number}.")
-            for game in outcome.games:
-                await message.answer(
-                    f"Тур {outcome.round_number}: стол {game.board_number} - {game.white_player_id} vs {game.black_player_id}"
-                )
+            return
+
+        log_ok(actor, "/start_tournament", "tournament:1", {"status": "ongoing", "round": outcome.round_number})
+        await notify_players(message, lambda _: f"Турнир начался. Стартует тур {outcome.round_number}.")
+        for game in outcome.games:
+            await message.answer(
+                f"Тур {outcome.round_number}: стол {game.board_number} - {game.white_player_id} vs {game.black_player_id}"
+            )
 
     @router.message(Command("tournament_statuc"))
     async def tournament_status_handler(message: Message) -> None:
@@ -230,6 +263,7 @@ def build_organizer_router(context: dict[str, object]) -> Router:
         undo_service.snapshot(actor, "/end_round")
         tournament_service.end_current_round()
         log_ok(actor, "/end_round", "round:current", {"closed": True})
+        await notify_players(message, lambda _: "Текущий тур завершен. Ожидайте начало следующего.")
         await message.answer("Текущий тур закрыт.")
 
     @router.message(Command("next_round"))
@@ -245,7 +279,7 @@ def build_organizer_router(context: dict[str, object]) -> Router:
             )
             return
         log_ok(actor, "/next_round", f"round:{outcome.round_number}", {"started": True})
-        await message.answer(f"Тур {outcome.round_number} начат.")
+        await notify_players(message, lambda _: f"Начался тур {outcome.round_number}.")
         for game in outcome.games:
             await message.answer(
                 f"Тур {outcome.round_number}: стол {game.board_number} - {game.white_player_id} vs {game.black_player_id}"
@@ -257,7 +291,7 @@ def build_organizer_router(context: dict[str, object]) -> Router:
         undo_service.snapshot(actor, "/confirm_next_round")
         outcome = pairing_service.confirm_next_round(1, actor)
         log_ok(actor, "/confirm_next_round", f"round:{outcome.round_number}", {"forced": True})
-        await message.answer(f"Тур {outcome.round_number} сгенерирован по подтверждению.")
+        await notify_players(message, lambda _: f"Подтвержден старт тура {outcome.round_number}.")
         for game in outcome.games:
             await message.answer(
                 f"Тур {outcome.round_number}: стол {game.board_number} - {game.white_player_id} vs {game.black_player_id}"
@@ -268,13 +302,11 @@ def build_organizer_router(context: dict[str, object]) -> Router:
         organizer_check(message, "/round")
         parts = (message.text or "").split()
         if len(parts) != 2:
-            await message.answer("Формат: /round <n>")
-            return
-        round_number = int(parts[1])
+            raise ValueError("Формат: /round <n>")
+        round_number = parse_int(parts[1], field="номер тура")
         round_ = round_repo.get_by_number(round_number)
         if round_ is None or round_.id is None:
-            await message.answer("Тур не найден.")
-            return
+            raise ValueError("Тур не найден.")
         games = game_repo.list_by_round(round_.id)
         if not games:
             await message.answer("Для этого тура нет партий.")
@@ -297,6 +329,13 @@ def build_organizer_router(context: dict[str, object]) -> Router:
         tournament_service.finish_tournament()
         log_ok(actor, "/finish_tournament", "tournament:1", {"status": "finished"})
         standings = scoring_service.recalculate()
+        positions = {row.telegram_id: row.position for row in standings}
+        await notify_players(
+            message,
+            lambda player: (
+                f"Турнир завершен. Ваша итоговая позиция: {positions.get(player.telegram_id, '-')}"
+            ),
+        )
         top_lines = [f"{row.position}. {row.full_name} - {row.score}" for row in standings]
         await message.answer("Турнир завершен.\n" + "\n".join(top_lines))
 
@@ -312,11 +351,13 @@ def build_organizer_router(context: dict[str, object]) -> Router:
         actor = organizer_check(message, "/set_player_rating")
         parts = (message.text or "").split()
         if len(parts) != 3:
-            await message.answer("Формат: /set_player_rating <player_id> <rating>")
-            return
+            raise ValueError("Формат: /set_player_rating <player_id> <rating>")
         undo_service.snapshot(actor, "/set_player_rating")
-        player = registration_service.set_rating(int(parts[1]), int(parts[2]))
+        player_id = parse_int(parts[1], field="player_id")
+        rating = parse_int(parts[2], field="rating")
+        player = registration_service.set_rating(player_id, rating)
         log_ok(actor, "/set_player_rating", f"player:{player.id}", {"rating": player.rating})
         await message.answer(f"Новый рейтинг игрока {player.full_name}: {player.rating}")
 
     return router
+

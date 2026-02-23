@@ -84,6 +84,20 @@ def test_report_conflict_notifies_players_and_allows_overwrite() -> None:
     assert game.result == "1-0"
 
 
+def test_latest_report_from_same_player_overwrites_previous_pending_report() -> None:
+    service, game_repository, _ = _build_service()
+
+    game_id = service.submit_report(player_id=10, result="1-0").game_id
+    rewritten = service.submit_report(player_id=10, result="0-1")
+    resolved = service.submit_report(player_id=20, result="0-1")
+
+    game = game_repository.get(game_id)
+    assert rewritten.status == "pending"
+    assert resolved.status == "agreed"
+    assert game is not None
+    assert game.result == "0-1"
+
+
 def test_player_cannot_re_report_after_result_finalized() -> None:
     service, _, _ = _build_service()
 

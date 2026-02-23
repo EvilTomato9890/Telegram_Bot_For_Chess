@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable
 
+from handlers.common.response_formatter import ResponseFormatter
+
 
 class CommandError(ValueError):
     """Raised when command cannot be executed in current tournament status."""
@@ -28,6 +30,12 @@ class TournamentState:
     players_ratings_locked: bool = False
     rounds_closed: set[int] = field(default_factory=set)
     players_ratings: dict[str, int] = field(default_factory=dict)
+    registered_players: set[str] = field(default_factory=set)
+    player_scores: dict[str, float] = field(default_factory=dict)
+    reported_results: dict[str, str] = field(default_factory=dict)
+    approved_results: set[str] = field(default_factory=set)
+    open_tickets: dict[int, str] = field(default_factory=dict)
+    next_ticket_id: int = 1
 
 
 @dataclass(slots=True)
@@ -197,6 +205,69 @@ class TournamentService:
         self.state = last.snapshot
         return f"Undone: {last.command}"
 
+    def rules(self) -> str:
+        return ResponseFormatter.rules()
+
+    def get_game_id(self) -> str:
+        game_id = f"R{max(1, self.state.current_round)}-B1"
+        return ResponseFormatter.get_game_id(game_id)
+
+    def my_next(self) -> str:
+        return ResponseFormatter.my_next("board 1, white vs black")
+
+    def schedule(self) -> str:
+        current_round = max(1, self.state.current_round)
+        return ResponseFormatter.schedule(self.state.total_rounds, current_round)
+
+    def my_score(self) -> str:
+        score = self.state.player_scores.get("me", 0.0)
+        return ResponseFormatter.my_score(score)
+
+    def standings(self) -> str:
+        total_players = len(self.state.registered_players)
+        return ResponseFormatter.standings(total_players)
+
+    def report(self, game_id: str, result: str) -> str:
+        return self._record("/report", lambda: self._report_impl(game_id, result))
+
+    def _report_impl(self, game_id: str, result: str) -> str:
+        self.state.reported_results[game_id] = result
+        return ResponseFormatter.report_received(game_id, result)
+
+    def register(self) -> str:
+        return self._record("/register", self._register_impl)
+
+    def _register_impl(self) -> str:
+        self.state.registered_players.add("me")
+        return ResponseFormatter.player_registered()
+
+    def create_ticket(self, topic: str) -> str:
+        return self._record("/create_ticket", lambda: self._create_ticket_impl(topic))
+
+    def _create_ticket_impl(self, topic: str) -> str:
+        ticket_id = self.state.next_ticket_id
+        self.state.next_ticket_id += 1
+        self.state.open_tickets[ticket_id] = topic
+        return ResponseFormatter.ticket_created(ticket_id, topic)
+
+    def close_ticket(self, ticket_id: int) -> str:
+        if ticket_id not in self.state.open_tickets:
+            raise CommandError(ResponseFormatter.ticket_not_found(ticket_id))
+        return self._record("/close_ticket", lambda: self._close_ticket_impl(ticket_id))
+
+    def _close_ticket_impl(self, ticket_id: int) -> str:
+        del self.state.open_tickets[ticket_id]
+        return ResponseFormatter.ticket_closed(ticket_id)
+
+    def approve_result(self, game_id: str) -> str:
+        if game_id not in self.state.reported_results:
+            raise CommandError(f"No reported result for {game_id}")
+        return self._record("/approve_result", lambda: self._approve_result_impl(game_id))
+
+    def _approve_result_impl(self, game_id: str) -> str:
+        self.state.approved_results.add(game_id)
+        return ResponseFormatter.result_approved(game_id)
+
 
 class CommandDispatcher:
     def __init__(self, service: TournamentService | None = None) -> None:
@@ -212,7 +283,7 @@ class CommandDispatcher:
     def execute(self, command_text: str) -> str:
         tokens = command_text.strip().split()
         if not tokens:
-            raise CommandError("Empty command")
+            raise CommandError(ResponseFormatter.EMPTY_COMMAND_ERROR)
 
         command = tokens[0]
         if command == "/create_tournament":
@@ -221,16 +292,13 @@ class CommandDispatcher:
             return self.service.open_registration()
         if command == "/set_round_number":
             if len(tokens) != 2:
-                raise CommandError("Usage: /set_round_number <n>")
-            rounds = self._parse_int(tokens[1], usage="Usage: /set_round_number <n>")
+                raise CommandError(ResponseFormatter.USAGE_SET_ROUND)
+            rounds = self._parse_int(tokens[1], usage=ResponseFormatter.USAGE_SET_ROUND)
             return self.service.set_round_number(rounds)
         if command == "/set_player_rating":
             if len(tokens) != 3:
-                raise CommandError("Usage: /set_player_rating <player> <rating>")
-            rating = self._parse_int(
-                tokens[2],
-                usage="Usage: /set_player_rating <player> <rating>",
-            )
+                raise CommandError(ResponseFormatter.USAGE_SET_PLAYER_RATING)
+            rating = self._parse_int(tokens[2], usage=ResponseFormatter.USAGE_SET_PLAYER_RATING)
             return self.service.set_player_rating(tokens[1], rating)
         if command in {"/prepare_turnament", "/prepare_tournament"}:
             return self.service.prepare_turnament()
@@ -246,10 +314,46 @@ class CommandDispatcher:
             return self.service.tournament_status()
         if command == "/round":
             if len(tokens) != 2:
-                raise CommandError("Usage: /round <n>")
-            round_number = self._parse_int(tokens[1], usage="Usage: /round <n>")
+                raise CommandError(ResponseFormatter.USAGE_ROUND)
+            round_number = self._parse_int(tokens[1], usage=ResponseFormatter.USAGE_ROUND)
             return self.service.round_info(round_number)
         if command == "/undo_last_action":
             return self.service.undo_last_action()
 
-        raise CommandError(f"Unknown command: {command}")
+        if command == "/rules":
+            return self.service.rules()
+        if command == "/get_game_id":
+            return self.service.get_game_id()
+        if command == "/my_next":
+            return self.service.my_next()
+        if command == "/schedule":
+            return self.service.schedule()
+        if command == "/my_score":
+            return self.service.my_score()
+        if command == "/standings":
+            return self.service.standings()
+        if command == "/report":
+            if len(tokens) != 3:
+                raise CommandError(ResponseFormatter.USAGE_REPORT)
+            return self.service.report(tokens[1], tokens[2])
+        if command == "/register":
+            return self.service.register()
+        if command == "/create_ticket":
+            if len(tokens) < 2:
+                raise CommandError("Usage: /create_ticket <topic>")
+            return self.service.create_ticket(" ".join(tokens[1:]))
+        if command == "/close_ticket":
+            if len(tokens) != 2:
+                raise CommandError(ResponseFormatter.USAGE_CLOSE_TICKET)
+            ticket_id = self._parse_int(tokens[1], usage=ResponseFormatter.USAGE_CLOSE_TICKET)
+            return self.service.close_ticket(ticket_id)
+        if command == "/approve_result":
+            if len(tokens) != 2:
+                raise CommandError(ResponseFormatter.USAGE_APPROVE_RESULT)
+            return self.service.approve_result(tokens[1])
+        if command == "/help":
+            if len(tokens) > 1 and tokens[1].lower() == "arbitrator":
+                return ResponseFormatter.HELP_ARBITRATOR
+            return ResponseFormatter.HELP_PLAYER
+
+        raise CommandError(ResponseFormatter.unknown_command(command))

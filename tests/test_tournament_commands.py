@@ -211,3 +211,14 @@ def test_critical_error_is_written_to_audit_for_recorded_commands() -> None:
 
     assert dispatcher.service.audit_log[-1].command == "/update_rules"
     assert dispatcher.service.audit_log[-1].outcome == "error: rules backend is unavailable"
+
+
+def test_critical_validation_error_is_logged_via_dispatcher() -> None:
+    dispatcher = CommandDispatcher()
+    dispatcher.execute("/create_tournament")
+
+    with pytest.raises(CommandError, match="Usage: /set_round_number <n>"):
+        dispatcher.execute("/set_round_number")
+
+    assert dispatcher.service.audit_log[-1].command == "/set_round_number"
+    assert dispatcher.service.audit_log[-1].outcome == "error: Usage: /set_round_number <n>"

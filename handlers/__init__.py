@@ -394,76 +394,86 @@ class CommandDispatcher:
             raise CommandError(ResponseFormatter.EMPTY_COMMAND_ERROR)
 
         command = tokens[0]
-        if command == "/create_tournament":
-            return self.service.create_tournament()
-        if command == "/open_registration":
-            return self.service.open_registration()
-        if command == "/set_round_number":
-            if len(tokens) != 2:
-                raise CommandError(ResponseFormatter.USAGE_SET_ROUND)
-            rounds = self._parse_int(tokens[1], usage=ResponseFormatter.USAGE_SET_ROUND)
-            return self.service.set_round_number(rounds)
-        if command == "/set_player_rating":
-            if len(tokens) != 3:
-                raise CommandError(ResponseFormatter.USAGE_SET_PLAYER_RATING)
-            rating = self._parse_int(tokens[2], usage=ResponseFormatter.USAGE_SET_PLAYER_RATING)
-            return self.service.set_player_rating(tokens[1], rating)
-        if command in {"/prepare_turnament", "/prepare_tournament"}:
-            return self.service.prepare_turnament()
-        if command == "/start_tournament":
-            return self.service.start_tournament()
-        if command == "/end_round":
-            return self.service.end_round()
-        if command == "/next_round":
-            return self.service.next_round()
-        if command == "/finish_tournament":
-            return self.service.finish_tournament()
-        if command in {"/tournament_statuc", "/tournament_status"}:
-            return self.service.tournament_status()
-        if command == "/round":
-            if len(tokens) != 2:
-                raise CommandError(ResponseFormatter.USAGE_ROUND)
-            round_number = self._parse_int(tokens[1], usage=ResponseFormatter.USAGE_ROUND)
-            return self.service.round_info(round_number)
-        if command == "/undo_last_action":
-            return self.service.undo_last_action()
+        try:
+            if command == "/create_tournament":
+                return self.service.create_tournament()
+            if command == "/open_registration":
+                return self.service.open_registration()
+            if command == "/set_round_number":
+                if len(tokens) != 2:
+                    raise CommandError(ResponseFormatter.USAGE_SET_ROUND)
+                rounds = self._parse_int(tokens[1], usage=ResponseFormatter.USAGE_SET_ROUND)
+                return self.service.set_round_number(rounds)
+            if command == "/set_player_rating":
+                if len(tokens) != 3:
+                    raise CommandError(ResponseFormatter.USAGE_SET_PLAYER_RATING)
+                rating = self._parse_int(tokens[2], usage=ResponseFormatter.USAGE_SET_PLAYER_RATING)
+                return self.service.set_player_rating(tokens[1], rating)
+            if command in {"/prepare_turnament", "/prepare_tournament"}:
+                return self.service.prepare_turnament()
+            if command == "/start_tournament":
+                return self.service.start_tournament()
+            if command == "/end_round":
+                return self.service.end_round()
+            if command == "/next_round":
+                return self.service.next_round()
+            if command == "/finish_tournament":
+                return self.service.finish_tournament()
+            if command in {"/tournament_statuc", "/tournament_status"}:
+                return self.service.tournament_status()
+            if command == "/round":
+                if len(tokens) != 2:
+                    raise CommandError(ResponseFormatter.USAGE_ROUND)
+                round_number = self._parse_int(tokens[1], usage=ResponseFormatter.USAGE_ROUND)
+                return self.service.round_info(round_number)
+            if command == "/undo_last_action":
+                return self.service.undo_last_action()
 
-        if command == "/rules":
-            return self.service.rules()
-        if command == "/get_game_id":
-            return self.service.get_game_id()
-        if command == "/my_next":
-            return self.service.my_next()
-        if command == "/schedule":
-            return self.service.schedule()
-        if command == "/update_rules":
-            return self.service.update_rules()
-        if command == "/my_score":
-            return self.service.my_score()
-        if command == "/standings":
-            return self.service.standings()
-        if command == "/report":
-            if len(tokens) != 3:
-                raise CommandError(ResponseFormatter.USAGE_REPORT)
-            return self.service.report(tokens[1], tokens[2])
-        if command == "/register":
-            return self.service.register()
-        if command == "/create_ticket":
-            if len(tokens) < 2:
-                raise CommandError(ResponseFormatter.USAGE_CREATE_TICKET)
-            return self.service.create_ticket(" ".join(tokens[1:]))
-        if command == "/close_ticket":
-            if len(tokens) != 2:
-                raise CommandError(ResponseFormatter.USAGE_CLOSE_TICKET)
-            ticket_id = self._parse_int(tokens[1], usage=ResponseFormatter.USAGE_CLOSE_TICKET)
-            return self.service.close_ticket(ticket_id)
-        if command == "/approve_result":
-            if len(tokens) != 2:
-                raise CommandError(ResponseFormatter.USAGE_APPROVE_RESULT)
-            return self.service.approve_result(tokens[1])
-        if command == "/help":
-            if len(tokens) > 1 and tokens[1].lower() == "arbitrator":
-                return ResponseFormatter.HELP_ARBITRATOR
-            return ResponseFormatter.HELP_PLAYER
+            if command == "/rules":
+                return self.service.rules()
+            if command == "/get_game_id":
+                return self.service.get_game_id()
+            if command == "/my_next":
+                return self.service.my_next()
+            if command == "/schedule":
+                return self.service.schedule()
+            if command == "/update_rules":
+                return self.service.update_rules()
+            if command == "/my_score":
+                return self.service.my_score()
+            if command == "/standings":
+                return self.service.standings()
+            if command == "/report":
+                if len(tokens) != 3:
+                    raise CommandError(ResponseFormatter.USAGE_REPORT)
+                return self.service.report(tokens[1], tokens[2])
+            if command == "/register":
+                return self.service.register()
+            if command == "/create_ticket":
+                if len(tokens) < 2:
+                    raise CommandError(ResponseFormatter.USAGE_CREATE_TICKET)
+                return self.service.create_ticket(" ".join(tokens[1:]))
+            if command == "/close_ticket":
+                if len(tokens) != 2:
+                    raise CommandError(ResponseFormatter.USAGE_CLOSE_TICKET)
+                ticket_id = self._parse_int(tokens[1], usage=ResponseFormatter.USAGE_CLOSE_TICKET)
+                return self.service.close_ticket(ticket_id)
+            if command == "/approve_result":
+                if len(tokens) != 2:
+                    raise CommandError(ResponseFormatter.USAGE_APPROVE_RESULT)
+                return self.service.approve_result(tokens[1])
+            if command == "/help":
+                if len(tokens) > 1 and tokens[1].lower() == "arbitrator":
+                    return ResponseFormatter.HELP_ARBITRATOR
+                return ResponseFormatter.HELP_PLAYER
 
-        raise CommandError(ResponseFormatter.unknown_command(command))
+            raise CommandError(ResponseFormatter.unknown_command(command))
+        except CommandError as error:
+            last = self.service.audit_log[-1] if self.service.audit_log else None
+            expected_outcome = f"error: {error}"
+            if (
+                command in self.service.CRITICAL_COMMANDS
+                and (last is None or last.command != command or last.outcome != expected_outcome)
+            ):
+                self.service._log_critical(command, expected_outcome)
+            raise

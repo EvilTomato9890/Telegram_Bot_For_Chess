@@ -64,7 +64,7 @@ class GameORM:
 @dataclass(slots=True)
 class TicketORM:
     id: int
-    author_player_id: int
+    author_user_id: int
     ticket_type: TicketType
     status: TicketStatus
     assignee_user_id: int | None

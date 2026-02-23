@@ -165,7 +165,7 @@ class TicketService:
         ticket = self._ticket_repository.add(
             Ticket(
                 id=None,
-                author_player_id=author,
+                author_user_id=author,
                 ticket_type=normalized_type,
                 status=status,
                 assignee_user_id=assignee_user_id,
@@ -196,7 +196,7 @@ class TicketService:
         closed_ticket = self._ticket_repository.update(
             Ticket(
                 id=ticket.id,
-                author_player_id=ticket.author_player_id,
+                author_user_id=ticket.author_user_id,
                 ticket_type=ticket.ticket_type,
                 status=TicketStatus.CLOSED,
                 assignee_user_id=ticket.assignee_user_id,

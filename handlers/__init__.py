@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Callable
 
@@ -44,15 +45,95 @@ class CommandRecord:
     snapshot: TournamentState
 
 
-class TournamentService:
+@dataclass(frozen=True, slots=True)
+class AuditRecord:
+    actor: str
+    command: str
+    timestamp: str
+    outcome: str
+
+
+class NotificationService:
     def __init__(self) -> None:
+        self.messages: list[str] = []
+
+    def _push(self, message: str) -> str:
+        self.messages.append(message)
+        return message
+
+    def round_started(self, round_number: int) -> str:
+        return self._push(f"Notification: round {round_number} started")
+
+    def round_ended(self, round_number: int) -> str:
+        return self._push(f"Notification: round {round_number} ended")
+
+    def pairs_published(self, round_number: int) -> str:
+        return self._push(f"Notification: pairings for round {round_number} published")
+
+    def rules_updated(self) -> str:
+        return self._push("Notification: tournament rules updated")
+
+    def tournament_finished(self, player: str, position: int) -> str:
+        return self._push(f"Notification: tournament finished, {player} position #{position}")
+
+
+class ScheduleService:
+    def round_windows(self, total_rounds: int) -> tuple[str, ...]:
+        if total_rounds < 1:
+            return ()
+        return tuple(
+            f"Round {round_number}: day {2 * round_number - 1} 10:00-22:00"
+            for round_number in range(1, total_rounds + 1)
+        )
+
+
+class TournamentService:
+    CRITICAL_COMMANDS = {
+        "/create_tournament",
+        "/open_registration",
+        "/set_round_number",
+        "/set_player_rating",
+        "/prepare_turnament",
+        "/start_tournament",
+        "/end_round",
+        "/next_round",
+        "/finish_tournament",
+        "/update_rules",
+        "/approve_result",
+        "/close_ticket",
+    }
+
+    def __init__(
+        self,
+        notification_service: NotificationService | None = None,
+        schedule_service: ScheduleService | None = None,
+        now_provider: Callable[[], datetime] | None = None,
+    ) -> None:
         self.state = TournamentState()
         self.command_log: list[CommandRecord] = []
+        self.audit_log: list[AuditRecord] = []
+        self.notification_service = notification_service or NotificationService()
+        self.schedule_service = schedule_service or ScheduleService()
+        self._now_provider = now_provider or (lambda: datetime.now(timezone.utc))
 
-    def _record(self, command: str, action: Callable[[], str]) -> str:
+    def _log_critical(self, command: str, outcome: str, actor: str = "system") -> None:
+        if command not in self.CRITICAL_COMMANDS:
+            return
+        timestamp = self._now_provider().isoformat()
+        print(f"[critical] actor={actor} command={command} timestamp={timestamp} outcome={outcome}")
+        self.audit_log.append(
+            AuditRecord(actor=actor, command=command, timestamp=timestamp, outcome=outcome)
+        )
+
+    def _record(self, command: str, action: Callable[[], str], *, actor: str = "system") -> str:
         snapshot = copy.deepcopy(self.state)
-        message = action()
+        try:
+            message = action()
+        except CommandError as error:
+            self._log_critical(command, f"error: {error}", actor=actor)
+            raise
         self.command_log.append(CommandRecord(command=command, snapshot=snapshot))
+        self._log_critical(command, message, actor=actor)
         return message
 
     def _ensure_status(
@@ -111,6 +192,7 @@ class TournamentService:
         return self._record(
             "/set_player_rating",
             lambda: self._set_player_rating_impl(player, rating),
+            actor="system",
         )
 
     def _set_player_rating_impl(self, player: str, rating: int) -> str:
@@ -141,6 +223,8 @@ class TournamentService:
     def _start_tournament_impl(self) -> str:
         self.state.current_round = 1
         self.state.status = TournamentStatus.ROUND_OPEN
+        self.notification_service.round_started(1)
+        self.notification_service.pairs_published(1)
         return "Tournament started, round 1 opened"
 
     def end_round(self) -> str:
@@ -150,6 +234,7 @@ class TournamentService:
     def _end_round_impl(self) -> str:
         self.state.rounds_closed.add(self.state.current_round)
         self.state.status = TournamentStatus.ROUND_CLOSED
+        self.notification_service.round_ended(self.state.current_round)
         return f"Round {self.state.current_round} ended"
 
     def next_round(self) -> str:
@@ -164,6 +249,8 @@ class TournamentService:
     def _next_round_impl(self) -> str:
         self.state.current_round += 1
         self.state.status = TournamentStatus.ROUND_OPEN
+        self.notification_service.round_started(self.state.current_round)
+        self.notification_service.pairs_published(self.state.current_round)
         return f"Round {self.state.current_round} opened"
 
     def finish_tournament(self) -> str:
@@ -177,7 +264,18 @@ class TournamentService:
 
     def _finish_tournament_impl(self) -> str:
         self.state.status = TournamentStatus.FINISHED
+        position = self._player_position("me")
+        self.notification_service.tournament_finished("me", position)
         return "Tournament finished"
+
+    def _player_position(self, player: str) -> int:
+        sorted_players = sorted(
+            self.state.player_scores.items(), key=lambda item: (-item[1], item[0])
+        )
+        for idx, (name, _) in enumerate(sorted_players, start=1):
+            if name == player:
+                return idx
+        return len(sorted_players) + 1
 
     def tournament_status(self) -> str:
         status = self.state.status.value
@@ -216,8 +314,18 @@ class TournamentService:
         return ResponseFormatter.my_next("board 1, white vs black")
 
     def schedule(self) -> str:
-        current_round = max(1, self.state.current_round)
-        return ResponseFormatter.schedule(self.state.total_rounds, current_round)
+        windows = self.schedule_service.round_windows(self.state.total_rounds)
+        if not windows:
+            current_round = max(1, self.state.current_round)
+            return ResponseFormatter.schedule(self.state.total_rounds, current_round)
+        return ResponseFormatter.schedule_windows(windows)
+
+    def update_rules(self) -> str:
+        return self._record("/update_rules", self._update_rules_impl)
+
+    def _update_rules_impl(self) -> str:
+        self.notification_service.rules_updated()
+        return "Rules updated"
 
     def my_score(self) -> str:
         score = self.state.player_scores.get("me", 0.0)
@@ -286,74 +394,86 @@ class CommandDispatcher:
             raise CommandError(ResponseFormatter.EMPTY_COMMAND_ERROR)
 
         command = tokens[0]
-        if command == "/create_tournament":
-            return self.service.create_tournament()
-        if command == "/open_registration":
-            return self.service.open_registration()
-        if command == "/set_round_number":
-            if len(tokens) != 2:
-                raise CommandError(ResponseFormatter.USAGE_SET_ROUND)
-            rounds = self._parse_int(tokens[1], usage=ResponseFormatter.USAGE_SET_ROUND)
-            return self.service.set_round_number(rounds)
-        if command == "/set_player_rating":
-            if len(tokens) != 3:
-                raise CommandError(ResponseFormatter.USAGE_SET_PLAYER_RATING)
-            rating = self._parse_int(tokens[2], usage=ResponseFormatter.USAGE_SET_PLAYER_RATING)
-            return self.service.set_player_rating(tokens[1], rating)
-        if command in {"/prepare_turnament", "/prepare_tournament"}:
-            return self.service.prepare_turnament()
-        if command == "/start_tournament":
-            return self.service.start_tournament()
-        if command == "/end_round":
-            return self.service.end_round()
-        if command == "/next_round":
-            return self.service.next_round()
-        if command == "/finish_tournament":
-            return self.service.finish_tournament()
-        if command in {"/tournament_statuc", "/tournament_status"}:
-            return self.service.tournament_status()
-        if command == "/round":
-            if len(tokens) != 2:
-                raise CommandError(ResponseFormatter.USAGE_ROUND)
-            round_number = self._parse_int(tokens[1], usage=ResponseFormatter.USAGE_ROUND)
-            return self.service.round_info(round_number)
-        if command == "/undo_last_action":
-            return self.service.undo_last_action()
+        try:
+            if command == "/create_tournament":
+                return self.service.create_tournament()
+            if command == "/open_registration":
+                return self.service.open_registration()
+            if command == "/set_round_number":
+                if len(tokens) != 2:
+                    raise CommandError(ResponseFormatter.USAGE_SET_ROUND)
+                rounds = self._parse_int(tokens[1], usage=ResponseFormatter.USAGE_SET_ROUND)
+                return self.service.set_round_number(rounds)
+            if command == "/set_player_rating":
+                if len(tokens) != 3:
+                    raise CommandError(ResponseFormatter.USAGE_SET_PLAYER_RATING)
+                rating = self._parse_int(tokens[2], usage=ResponseFormatter.USAGE_SET_PLAYER_RATING)
+                return self.service.set_player_rating(tokens[1], rating)
+            if command in {"/prepare_turnament", "/prepare_tournament"}:
+                return self.service.prepare_turnament()
+            if command == "/start_tournament":
+                return self.service.start_tournament()
+            if command == "/end_round":
+                return self.service.end_round()
+            if command == "/next_round":
+                return self.service.next_round()
+            if command == "/finish_tournament":
+                return self.service.finish_tournament()
+            if command in {"/tournament_statuc", "/tournament_status"}:
+                return self.service.tournament_status()
+            if command == "/round":
+                if len(tokens) != 2:
+                    raise CommandError(ResponseFormatter.USAGE_ROUND)
+                round_number = self._parse_int(tokens[1], usage=ResponseFormatter.USAGE_ROUND)
+                return self.service.round_info(round_number)
+            if command == "/undo_last_action":
+                return self.service.undo_last_action()
 
-        if command == "/rules":
-            return self.service.rules()
-        if command == "/get_game_id":
-            return self.service.get_game_id()
-        if command == "/my_next":
-            return self.service.my_next()
-        if command == "/schedule":
-            return self.service.schedule()
-        if command == "/my_score":
-            return self.service.my_score()
-        if command == "/standings":
-            return self.service.standings()
-        if command == "/report":
-            if len(tokens) != 3:
-                raise CommandError(ResponseFormatter.USAGE_REPORT)
-            return self.service.report(tokens[1], tokens[2])
-        if command == "/register":
-            return self.service.register()
-        if command == "/create_ticket":
-            if len(tokens) < 2:
-                raise CommandError(ResponseFormatter.USAGE_CREATE_TICKET)
-            return self.service.create_ticket(" ".join(tokens[1:]))
-        if command == "/close_ticket":
-            if len(tokens) != 2:
-                raise CommandError(ResponseFormatter.USAGE_CLOSE_TICKET)
-            ticket_id = self._parse_int(tokens[1], usage=ResponseFormatter.USAGE_CLOSE_TICKET)
-            return self.service.close_ticket(ticket_id)
-        if command == "/approve_result":
-            if len(tokens) != 2:
-                raise CommandError(ResponseFormatter.USAGE_APPROVE_RESULT)
-            return self.service.approve_result(tokens[1])
-        if command == "/help":
-            if len(tokens) > 1 and tokens[1].lower() == "arbitrator":
-                return ResponseFormatter.HELP_ARBITRATOR
-            return ResponseFormatter.HELP_PLAYER
+            if command == "/rules":
+                return self.service.rules()
+            if command == "/get_game_id":
+                return self.service.get_game_id()
+            if command == "/my_next":
+                return self.service.my_next()
+            if command == "/schedule":
+                return self.service.schedule()
+            if command == "/update_rules":
+                return self.service.update_rules()
+            if command == "/my_score":
+                return self.service.my_score()
+            if command == "/standings":
+                return self.service.standings()
+            if command == "/report":
+                if len(tokens) != 3:
+                    raise CommandError(ResponseFormatter.USAGE_REPORT)
+                return self.service.report(tokens[1], tokens[2])
+            if command == "/register":
+                return self.service.register()
+            if command == "/create_ticket":
+                if len(tokens) < 2:
+                    raise CommandError(ResponseFormatter.USAGE_CREATE_TICKET)
+                return self.service.create_ticket(" ".join(tokens[1:]))
+            if command == "/close_ticket":
+                if len(tokens) != 2:
+                    raise CommandError(ResponseFormatter.USAGE_CLOSE_TICKET)
+                ticket_id = self._parse_int(tokens[1], usage=ResponseFormatter.USAGE_CLOSE_TICKET)
+                return self.service.close_ticket(ticket_id)
+            if command == "/approve_result":
+                if len(tokens) != 2:
+                    raise CommandError(ResponseFormatter.USAGE_APPROVE_RESULT)
+                return self.service.approve_result(tokens[1])
+            if command == "/help":
+                if len(tokens) > 1 and tokens[1].lower() == "arbitrator":
+                    return ResponseFormatter.HELP_ARBITRATOR
+                return ResponseFormatter.HELP_PLAYER
 
-        raise CommandError(ResponseFormatter.unknown_command(command))
+            raise CommandError(ResponseFormatter.unknown_command(command))
+        except CommandError as error:
+            last = self.service.audit_log[-1] if self.service.audit_log else None
+            expected_outcome = f"error: {error}"
+            if (
+                command in self.service.CRITICAL_COMMANDS
+                and (last is None or last.command != command or last.outcome != expected_outcome)
+            ):
+                self.service._log_critical(command, expected_outcome)
+            raise

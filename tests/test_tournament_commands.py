@@ -1,6 +1,6 @@
 import pytest
 
-from handlers import CommandDispatcher, CommandError
+from handlers import CommandDispatcher, CommandError, TournamentService
 from keyboards import build_start_keyboard_message
 
 
@@ -132,3 +132,93 @@ def test_help_messages_and_keyboard_payload() -> None:
     message = build_start_keyboard_message()
     assert message.buttons == ("регистрация", "текущая информация")
     assert "Добро пожаловать" in message.text
+
+
+def test_notifications_on_round_lifecycle_rules_and_finish_position() -> None:
+    dispatcher = CommandDispatcher()
+    dispatcher.execute("/create_tournament")
+    dispatcher.execute("/open_registration")
+    dispatcher.execute("/set_round_number 1")
+    dispatcher.execute("/prepare_turnament")
+    dispatcher.execute("/register")
+    dispatcher.service.state.player_scores["me"] = 2.0
+    dispatcher.service.state.player_scores["alice"] = 3.0
+
+    dispatcher.execute("/start_tournament")
+    dispatcher.execute("/update_rules")
+    dispatcher.execute("/end_round")
+    dispatcher.execute("/finish_tournament")
+
+    assert dispatcher.service.notification_service.messages == [
+        "Notification: round 1 started",
+        "Notification: pairings for round 1 published",
+        "Notification: tournament rules updated",
+        "Notification: round 1 ended",
+        "Notification: tournament finished, me position #2",
+    ]
+
+
+def test_schedule_returns_round_windows_when_rounds_are_configured() -> None:
+    dispatcher = CommandDispatcher()
+    dispatcher.execute("/create_tournament")
+    dispatcher.execute("/set_round_number 2")
+
+    assert dispatcher.execute("/schedule") == (
+        "Schedule windows:\n"
+        "Round 1: day 1 10:00-22:00\n"
+        "Round 2: day 3 10:00-22:00"
+    )
+
+
+def test_critical_commands_are_logged_to_audit_and_console(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    dispatcher = CommandDispatcher()
+
+    dispatcher.execute("/create_tournament")
+    captured = capsys.readouterr()
+
+    assert "[critical] actor=system command=/create_tournament" in captured.out
+    assert len(dispatcher.service.audit_log) == 1
+    record = dispatcher.service.audit_log[0]
+    assert record.command == "/create_tournament"
+    assert record.actor == "system"
+    assert record.outcome == "Tournament created"
+
+
+def test_update_rules_command_is_exposed_by_dispatcher() -> None:
+    dispatcher = CommandDispatcher()
+
+    assert dispatcher.execute("/update_rules") == "Rules updated"
+
+
+def test_update_rules_is_undoable() -> None:
+    dispatcher = CommandDispatcher()
+
+    dispatcher.execute("/update_rules")
+    assert dispatcher.execute("/undo_last_action") == "Undone: /update_rules"
+
+
+def test_critical_error_is_written_to_audit_for_recorded_commands() -> None:
+    class BrokenTournamentService(TournamentService):
+        def _update_rules_impl(self) -> str:
+            raise CommandError("rules backend is unavailable")
+
+    dispatcher = CommandDispatcher(service=BrokenTournamentService())
+
+    with pytest.raises(CommandError, match="rules backend is unavailable"):
+        dispatcher.execute("/update_rules")
+
+    assert dispatcher.service.audit_log[-1].command == "/update_rules"
+    assert dispatcher.service.audit_log[-1].outcome == "error: rules backend is unavailable"
+
+
+def test_critical_validation_error_is_logged_via_dispatcher() -> None:
+    dispatcher = CommandDispatcher()
+    dispatcher.execute("/create_tournament")
+
+    with pytest.raises(CommandError, match="Usage: /set_round_number <n>"):
+        dispatcher.execute("/set_round_number")
+
+    assert dispatcher.service.audit_log[-1].command == "/set_round_number"
+    assert dispatcher.service.audit_log[-1].outcome == "error: Usage: /set_round_number <n>"

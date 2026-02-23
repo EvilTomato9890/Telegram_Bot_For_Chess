@@ -57,6 +57,12 @@ class ResponseFormatter:
         return f"Schedule: round {current_round}/{total_rounds} is active"
 
     @staticmethod
+    def schedule_windows(windows: tuple[str, ...]) -> str:
+        if not windows:
+            return "Schedule is not published yet"
+        return "Schedule windows:\n" + "\n".join(windows)
+
+    @staticmethod
     def my_score(score: float) -> str:
         return f"Your score: {score:.1f}"
 

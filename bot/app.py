@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Event
 
 from infra.config import AppConfig, load_config
 from infra.logging import AuditLogger, setup_logging
@@ -57,6 +58,17 @@ class BotApplication:
             action="initialize",
             result="ok",
         )
+        shutdown_event = Event()
+        try:
+            shutdown_event.wait()
+        except KeyboardInterrupt:
+            self.container.audit_logger.log_event(
+                actor="system",
+                command="shutdown",
+                entity="application",
+                action="stop",
+                result="ok",
+            )
 
 
 def create_container(dotenv_path: str | Path | None = None) -> Container:

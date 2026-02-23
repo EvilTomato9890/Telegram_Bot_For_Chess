@@ -60,7 +60,10 @@ class BotApplication:
 
 
 def create_container(dotenv_path: str | Path | None = None) -> Container:
-    resolved_dotenv_path = dotenv_path or (Path(__file__).resolve().parent.parent / ".env")
+    if dotenv_path is None:
+        resolved_dotenv_path: str | Path = Path(__file__).resolve().parent.parent / ".env"
+    else:
+        resolved_dotenv_path = dotenv_path
     config = load_config(resolved_dotenv_path)
     audit_logger = setup_logging(level=config.log_level, audit_log_path=config.audit_log_path)
 

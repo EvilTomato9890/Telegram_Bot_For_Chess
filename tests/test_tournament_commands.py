@@ -1,6 +1,6 @@
 import pytest
 
-from handlers import CommandDispatcher, CommandError
+from handlers import CommandDispatcher, CommandError, TournamentService
 from keyboards import build_start_keyboard_message
 
 
@@ -190,3 +190,24 @@ def test_update_rules_command_is_exposed_by_dispatcher() -> None:
     dispatcher = CommandDispatcher()
 
     assert dispatcher.execute("/update_rules") == "Rules updated"
+
+
+def test_update_rules_is_undoable() -> None:
+    dispatcher = CommandDispatcher()
+
+    dispatcher.execute("/update_rules")
+    assert dispatcher.execute("/undo_last_action") == "Undone: /update_rules"
+
+
+def test_critical_error_is_written_to_audit_for_recorded_commands() -> None:
+    class BrokenTournamentService(TournamentService):
+        def _update_rules_impl(self) -> str:
+            raise CommandError("rules backend is unavailable")
+
+    dispatcher = CommandDispatcher(service=BrokenTournamentService())
+
+    with pytest.raises(CommandError, match="rules backend is unavailable"):
+        dispatcher.execute("/update_rules")
+
+    assert dispatcher.service.audit_log[-1].command == "/update_rules"
+    assert dispatcher.service.audit_log[-1].outcome == "error: rules backend is unavailable"

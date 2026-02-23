@@ -67,9 +67,11 @@ class TicketORM:
     author_player_id: int
     ticket_type: TicketType
     status: TicketStatus
+    assignee_user_id: int | None
     game_id: int | None
-    title: str
-    body: str
+    description: str
+    closed_by_user_id: int | None
+    closed_at: str | None
 
 
 __all__ = [

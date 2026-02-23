@@ -13,9 +13,28 @@ class RoleCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class CreateTicketCommand:
+    actor_id: int
+    ticket_type: str
+    game_id: int | None
+    description: str
+
+
+@dataclass(frozen=True, slots=True)
+class CloseTicketCommand:
+    actor_id: int
+    ticket_id: int
+
+
+@dataclass(frozen=True, slots=True)
 class ServiceResponse:
     ok: bool
     message: str
 
 
-__all__ = ["RoleCommand", "ServiceResponse"]
+__all__ = [
+    "RoleCommand",
+    "CreateTicketCommand",
+    "CloseTicketCommand",
+    "ServiceResponse",
+]

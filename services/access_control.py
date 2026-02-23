@@ -24,6 +24,8 @@ COMMAND_ACCESS_MATRIX: dict[Command, frozenset[Role]] = {
     "/approve_result": frozenset({"admin", "arbiter"}),
     "/register": frozenset({"player", "arbiter", "admin"}),
     "/help": frozenset({"player", "arbiter", "admin"}),
+    "/create_ticket": frozenset({"player", "arbiter", "admin"}),
+    "/close_ticket": frozenset({"arbiter", "admin"}),
 }
 
 
@@ -107,4 +109,13 @@ class AccessControlService:
             command
             for command, allowed_roles in self._command_access_matrix.items()
             if self.has_any_role(user_id, allowed_roles)
+        )
+
+    def user_ids_with_role(self, role: str) -> list[int]:
+        normalized_role = validate_role(role)
+        all_user_ids = set(self._config_roles_by_user) | set(self._db_roles_by_user)
+        return sorted(
+            user_id
+            for user_id in all_user_ids
+            if normalized_role in self.resolve_roles(user_id).roles
         )

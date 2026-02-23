@@ -28,15 +28,12 @@ class PlayerStatus(StrEnum):
 class TicketStatus(StrEnum):
     OPEN = "open"
     ASSIGNED = "assigned"
-    RESOLVED = "resolved"
     CLOSED = "closed"
 
 
 class TicketType(StrEnum):
-    RESULT_DISPUTE = "result_dispute"
-    PAIRING_ISSUE = "pairing_issue"
-    TECHNICAL = "technical"
-    OTHER = "other"
+    ARBITR = "arbitr"
+    ORGANIZER = "organizer"
 
 
 __all__ = [

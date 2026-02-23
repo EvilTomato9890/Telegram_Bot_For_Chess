@@ -9,6 +9,7 @@ from .contracts import (
     TicketService,
     TournamentService,
 )
+from .result_reporting import ResultReportingService
 
 __all__ = [
     "TournamentService",
@@ -18,4 +19,5 @@ __all__ = [
     "TicketService",
     "NotificationService",
     "AccessControlService",
+    "ResultReportingService",
 ]

@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 
+from aiogram import Bot, Dispatcher, Router
+from aiogram.filters import Command
+from aiogram.types import Message
+from handlers import HelpCommandHandler, RoleCommandHandler, TicketCommandHandler
 from infra.config import AppConfig, load_config
 from infra.logging import AuditLogger, setup_logging
 from repositories import (
@@ -57,6 +64,111 @@ class BotApplication:
             action="initialize",
             result="ok",
         )
+        try:
+            asyncio.run(self._run_polling())
+        except KeyboardInterrupt:
+            self.container.audit_logger.log_event(
+                actor="system",
+                command="shutdown",
+                entity="application",
+                action="interrupt",
+                result="ok",
+            )
+
+    async def _run_polling(self) -> None:
+        router = Router()
+        self._register_handlers(router)
+
+        dispatcher = Dispatcher()
+        dispatcher.include_router(router)
+
+        bot = Bot(token=self.container.config.token)
+        try:
+            await dispatcher.start_polling(bot)
+        finally:
+            await bot.session.close()
+
+    def _register_handlers(self, router: Router) -> None:
+        help_handler = HelpCommandHandler(access_control_service=self.container.access_control_service)
+        role_handler = RoleCommandHandler(access_control_service=self.container.access_control_service)
+        ticket_handler = TicketCommandHandler(
+            ticket_service=self.container.ticket_service,
+            access_control_service=self.container.access_control_service,
+        )
+
+        @router.message(Command("start"))
+        async def start_handler(message: Message) -> None:
+            await message.answer("Bot is running. Use /help to list available commands.")
+
+        @router.message(Command("help"))
+        async def help_command_handler(message: Message) -> None:
+            actor_id = self._actor_id(message)
+            await message.answer(help_handler.handle_help(actor_id=actor_id))
+
+        @router.message(Command("grant_role"))
+        async def grant_role_command_handler(message: Message) -> None:
+            await self._dispatch_command(
+                message=message,
+                handler=lambda actor_id, raw_command: role_handler.handle_grant(
+                    actor_id=actor_id,
+                    raw_command=raw_command,
+                ),
+            )
+
+        @router.message(Command("revoke_role"))
+        async def revoke_role_command_handler(message: Message) -> None:
+            await self._dispatch_command(
+                message=message,
+                handler=lambda actor_id, raw_command: role_handler.handle_revoke(
+                    actor_id=actor_id,
+                    raw_command=raw_command,
+                ),
+            )
+
+        @router.message(Command("create_ticket"))
+        async def create_ticket_command_handler(message: Message) -> None:
+            await self._dispatch_command(
+                message=message,
+                handler=lambda actor_id, raw_command: ticket_handler.handle_create_ticket(
+                    actor_id=actor_id,
+                    raw_command=raw_command,
+                ),
+            )
+
+        @router.message(Command("close_ticket"))
+        async def close_ticket_command_handler(message: Message) -> None:
+            await self._dispatch_command(
+                message=message,
+                handler=lambda actor_id, raw_command: ticket_handler.handle_close_ticket(
+                    actor_id=actor_id,
+                    raw_command=raw_command,
+                ),
+            )
+
+    async def _dispatch_command(self, message: Message, handler: Callable[[int, str], str]) -> None:
+        try:
+            actor_id = self._actor_id(message)
+            raw_command = self._raw_text(message)
+            response = handler(actor_id, raw_command)
+        except PermissionError as exc:
+            await message.answer(f"Access denied: {exc}")
+        except ValueError as exc:
+            await message.answer(f"Invalid command: {exc}")
+        except Exception:
+            logging.getLogger(__name__).exception("Unhandled command error")
+            await message.answer("Internal error while handling command.")
+        else:
+            await message.answer(response)
+
+    @staticmethod
+    def _raw_text(message: Message) -> str:
+        return message.text or ""
+
+    @staticmethod
+    def _actor_id(message: Message) -> int:
+        if message.from_user is None:
+            raise ValueError("actor cannot be resolved for system messages")
+        return message.from_user.id
 
 
 def create_container(dotenv_path: str | Path | None = None) -> Container:

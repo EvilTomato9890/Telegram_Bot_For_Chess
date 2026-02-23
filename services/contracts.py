@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import UTC, datetime
 
 from domain.models import Game, Player, Round, Ticket, Tournament
 from domain.models.enums import TicketStatus, TicketType, TournamentStatus
+from infra.logging import AuditLogger
 from repositories import (
     GameRepository,
     PlayerRepository,
@@ -141,26 +143,88 @@ class PairingService:
 class TicketService:
     """Create and track support tickets."""
 
-    def __init__(self, ticket_repository: TicketRepository) -> None:
+    def __init__(
+        self,
+        ticket_repository: TicketRepository,
+        audit_logger: AuditLogger,
+        arbitrs_ids: list[int],
+        organizer_ids: list[int],
+    ) -> None:
         self._ticket_repository = ticket_repository
+        self._audit_logger = audit_logger
+        self._arbitrs_ids = sorted(set(arbitrs_ids))
+        self._organizer_ids = sorted(set(organizer_ids))
 
-    def create_ticket(self, author_player_id: int, title: str, body: str) -> Ticket:
-        normalized_title = title.strip()
-        normalized_body = body.strip()
-        if not normalized_title:
-            raise ValueError("ticket title cannot be empty")
-        if not normalized_body:
-            raise ValueError("ticket body cannot be empty")
+    def create_ticket(self, ticket_type: str, author: int, game_id: int | None, description: str) -> Ticket:
+        normalized_description = description.strip()
+        if not normalized_description:
+            raise ValueError("ticket description cannot be empty")
 
-        return self._ticket_repository.add(
+        normalized_type = TicketType(ticket_type.strip().lower())
+        assignee_user_id = self._pick_assignee(normalized_type)
+        status = TicketStatus.ASSIGNED if assignee_user_id is not None else TicketStatus.OPEN
+
+        ticket = self._ticket_repository.add(
             Ticket(
                 id=None,
-                author_player_id=author_player_id,
-                ticket_type=TicketType.OTHER,
-                status=TicketStatus.OPEN,
-                title=normalized_title,
-                body=normalized_body,
+                author_player_id=author,
+                ticket_type=normalized_type,
+                status=status,
+                assignee_user_id=assignee_user_id,
+                game_id=game_id,
+                description=normalized_description,
             )
+        )
+        self._audit_logger.log_event(
+            actor=str(author),
+            command="/create_ticket",
+            entity=f"ticket:{ticket.id}",
+            action=(
+                f"created type={ticket.ticket_type.value} assignee={assignee_user_id}"
+                if assignee_user_id is not None
+                else f"created type={ticket.ticket_type.value} assignee=none"
+            ),
+            result="ok",
+        )
+        return ticket
+
+    def close_ticket(self, ticket_id: int, closed_by: int) -> Ticket:
+        ticket = self._ticket_repository.get(ticket_id)
+        if ticket is None:
+            raise ValueError("ticket not found")
+        if ticket.status == TicketStatus.CLOSED:
+            raise ValueError("ticket is already closed")
+
+        closed_ticket = self._ticket_repository.update(
+            Ticket(
+                id=ticket.id,
+                author_player_id=ticket.author_player_id,
+                ticket_type=ticket.ticket_type,
+                status=TicketStatus.CLOSED,
+                assignee_user_id=ticket.assignee_user_id,
+                game_id=ticket.game_id,
+                description=ticket.description,
+                closed_by_user_id=closed_by,
+                closed_at=datetime.now(UTC),
+            )
+        )
+        self._audit_logger.log_event(
+            actor=str(closed_by),
+            command="/close_ticket",
+            entity=f"ticket:{ticket_id}",
+            action="closed",
+            result="ok",
+        )
+        return closed_ticket
+
+    def _pick_assignee(self, ticket_type: TicketType) -> int | None:
+        candidates = self._arbitrs_ids if ticket_type == TicketType.ARBITR else self._organizer_ids
+        if not candidates:
+            return None
+
+        return min(
+            candidates,
+            key=lambda user_id: (self._ticket_repository.active_count_by_assignee(user_id), user_id),
         )
 
 

@@ -24,6 +24,8 @@ COMMAND_ACCESS_MATRIX: dict[Command, frozenset[Role]] = {
     "/approve_result": frozenset({"admin", "arbiter"}),
     "/register": frozenset({"player", "arbiter", "admin"}),
     "/help": frozenset({"player", "arbiter", "admin"}),
+    "/create_ticket": frozenset({"player", "arbiter", "admin"}),
+    "/close_ticket": frozenset({"arbiter", "admin"}),
 }
 
 

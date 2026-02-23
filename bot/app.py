@@ -102,7 +102,12 @@ def create_container() -> Container:
             notification_service=notification_service,
             access_control_service=access_control_service,
         ),
-        ticket_service=TicketService(ticket_repository=ticket_repository),
+        ticket_service=TicketService(
+            ticket_repository=ticket_repository,
+            audit_logger=audit_logger,
+            arbitrs_ids=config.arbitrs_ids,
+            organizer_ids=config.admin_ids,
+        ),
         notification_service=notification_service,
         access_control_service=access_control_service,
     )

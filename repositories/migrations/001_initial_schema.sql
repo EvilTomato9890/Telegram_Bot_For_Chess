@@ -55,11 +55,13 @@ CREATE TABLE games (
 CREATE TABLE tickets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     author_player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-    ticket_type TEXT NOT NULL CHECK (ticket_type IN ('result_dispute', 'pairing_issue', 'technical', 'other')),
-    status TEXT NOT NULL CHECK (status IN ('open', 'assigned', 'resolved', 'closed')),
+    ticket_type TEXT NOT NULL CHECK (ticket_type IN ('arbitr', 'organizer')),
+    status TEXT NOT NULL CHECK (status IN ('open', 'assigned', 'closed')),
+    assignee_user_id INTEGER REFERENCES players(id) ON DELETE SET NULL,
     game_id INTEGER REFERENCES games(id) ON DELETE SET NULL,
-    title TEXT NOT NULL DEFAULT '',
-    body TEXT NOT NULL DEFAULT ''
+    description TEXT NOT NULL DEFAULT '',
+    closed_by_user_id INTEGER REFERENCES players(id) ON DELETE SET NULL,
+    closed_at TEXT
 );
 
 CREATE INDEX idx_players_tournament_id ON players(tournament_id);

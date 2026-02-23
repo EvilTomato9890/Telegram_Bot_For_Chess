@@ -1,86 +1,148 @@
-"""Application factory and dependency container."""
+"""Application bootstrap for Telegram Swiss tournament bot."""
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
 from dataclasses import dataclass
 import logging
 from pathlib import Path
+from typing import Any
 
-from aiogram import Bot, Dispatcher, Router
-from aiogram.filters import Command
-from aiogram.types import Message
-from handlers import HelpCommandHandler, RoleCommandHandler, TicketCommandHandler
-from infra.config import AppConfig, load_config
-from infra.logging import AuditLogger, setup_logging
+from aiogram import Bot, Dispatcher
+from aiogram.types.error_event import ErrorEvent
+from bot.routers import (
+    build_arbitrator_router,
+    build_common_router,
+    build_organizer_router,
+    build_player_router,
+)
+from infra import AppConfig, AuditLogger, Database, load_config, setup_logging
 from repositories import (
+    GameReportRepository,
     GameRepository,
     PlayerRepository,
+    RoleGrantRepository,
     RoundRepository,
     TableRepository,
     TicketRepository,
     TournamentRepository,
+    UndoRepository,
+    init_db,
 )
 from services import (
     AccessControlService,
     NotificationService,
     PairingService,
     RegistrationService,
-    ResultReportingService,
+    ResultService,
     ScoringService,
     TicketService,
     TournamentService,
+    UndoService,
 )
 
 
 @dataclass(slots=True)
 class Container:
-    """Simple DI container for app dependencies."""
+    """Dependency container for all app components."""
 
     config: AppConfig
+    database: Database
     audit_logger: AuditLogger
-    tournament_service: TournamentService
-    registration_service: RegistrationService
-    pairing_service: PairingService
-    scoring_service: ScoringService
-    result_reporting_service: ResultReportingService
-    ticket_service: TicketService
+    tournament_repo: TournamentRepository
+    player_repo: PlayerRepository
+    round_repo: RoundRepository
+    game_repo: GameRepository
+    report_repo: GameReportRepository
+    table_repo: TableRepository
+    ticket_repo: TicketRepository
+    role_repo: RoleGrantRepository
+    undo_repo: UndoRepository
+    acl_service: AccessControlService
     notification_service: NotificationService
-    access_control_service: AccessControlService
+    scoring_service: ScoringService
+    registration_service: RegistrationService
+    tournament_service: TournamentService
+    pairing_service: PairingService
+    result_service: ResultService
+    ticket_service: TicketService
+    undo_service: UndoService
+
+    def as_context(self) -> dict[str, Any]:
+        """Flat dictionary used by routers."""
+
+        return {
+            "config": self.config,
+            "audit_logger": self.audit_logger,
+            "acl_service": self.acl_service,
+            "notification_service": self.notification_service,
+            "scoring_service": self.scoring_service,
+            "registration_service": self.registration_service,
+            "tournament_service": self.tournament_service,
+            "pairing_service": self.pairing_service,
+            "result_service": self.result_service,
+            "ticket_service": self.ticket_service,
+            "undo_service": self.undo_service,
+            "player_repo": self.player_repo,
+            "round_repo": self.round_repo,
+            "game_repo": self.game_repo,
+            "table_repo": self.table_repo,
+        }
 
 
 @dataclass(slots=True)
 class BotApplication:
-    """Entrypoint object for bot runtime."""
+    """Runtime entrypoint."""
 
     container: Container
 
     def run(self) -> None:
+        """Run long-polling."""
+
         self.container.audit_logger.log_event(
-            actor="system",
+            actor_id="system",
+            roles=["system"],
             command="startup",
             entity="application",
-            action="initialize",
+            before=None,
+            after={"state": "polling"},
             result="ok",
+            reason=None,
         )
         try:
             asyncio.run(self._run_polling())
         except KeyboardInterrupt:
-            self.container.audit_logger.log_event(
-                actor="system",
-                command="shutdown",
-                entity="application",
-                action="interrupt",
-                result="ok",
-            )
+            logging.getLogger(__name__).info("Polling interrupted by user.")
 
     async def _run_polling(self) -> None:
-        router = Router()
-        self._register_handlers(router)
-
         dispatcher = Dispatcher()
-        dispatcher.include_router(router)
+        context = self.container.as_context()
+        dispatcher.include_router(build_common_router(context))
+        dispatcher.include_router(build_player_router(context))
+        dispatcher.include_router(build_arbitrator_router(context))
+        dispatcher.include_router(build_organizer_router(context))
+
+        @dispatcher.errors()
+        async def global_error_handler(event: ErrorEvent) -> None:
+            exception = event.exception
+            update = event.update
+            logging.getLogger(__name__).exception("Unhandled update error: %s", exception)
+            self.container.audit_logger.log_event(
+                actor_id="unknown",
+                roles=["unknown"],
+                command="update",
+                entity="dispatcher",
+                before={"update_id": update.update_id if update else None},
+                after=None,
+                result="error",
+                reason=str(exception),
+            )
+            if isinstance(exception, ValueError) and update.message is not None:
+                await update.message.answer(f"Ошибка: {exception}")
+            elif isinstance(exception, PermissionError) and update.message is not None:
+                await update.message.answer("Недостаточно прав для этой команды.")
+            elif update.message is not None:
+                await update.message.answer("Внутренняя ошибка обработки команды.")
 
         bot = Bot(token=self.container.config.token)
         try:
@@ -88,149 +150,108 @@ class BotApplication:
         finally:
             await bot.session.close()
 
-    def _register_handlers(self, router: Router) -> None:
-        help_handler = HelpCommandHandler(access_control_service=self.container.access_control_service)
-        role_handler = RoleCommandHandler(access_control_service=self.container.access_control_service)
-        ticket_handler = TicketCommandHandler(
-            ticket_service=self.container.ticket_service,
-            access_control_service=self.container.access_control_service,
-        )
-
-        @router.message(Command("start"))
-        async def start_handler(message: Message) -> None:
-            await message.answer("Bot is running. Use /help to list available commands.")
-
-        @router.message(Command("help"))
-        async def help_command_handler(message: Message) -> None:
-            actor_id = self._actor_id(message)
-            await message.answer(help_handler.handle_help(actor_id=actor_id))
-
-        @router.message(Command("grant_role"))
-        async def grant_role_command_handler(message: Message) -> None:
-            await self._dispatch_command(
-                message=message,
-                handler=lambda actor_id, raw_command: role_handler.handle_grant(
-                    actor_id=actor_id,
-                    raw_command=raw_command,
-                ),
-            )
-
-        @router.message(Command("revoke_role"))
-        async def revoke_role_command_handler(message: Message) -> None:
-            await self._dispatch_command(
-                message=message,
-                handler=lambda actor_id, raw_command: role_handler.handle_revoke(
-                    actor_id=actor_id,
-                    raw_command=raw_command,
-                ),
-            )
-
-        @router.message(Command("create_ticket"))
-        async def create_ticket_command_handler(message: Message) -> None:
-            await self._dispatch_command(
-                message=message,
-                handler=lambda actor_id, raw_command: ticket_handler.handle_create_ticket(
-                    actor_id=actor_id,
-                    raw_command=raw_command,
-                ),
-            )
-
-        @router.message(Command("close_ticket"))
-        async def close_ticket_command_handler(message: Message) -> None:
-            await self._dispatch_command(
-                message=message,
-                handler=lambda actor_id, raw_command: ticket_handler.handle_close_ticket(
-                    actor_id=actor_id,
-                    raw_command=raw_command,
-                ),
-            )
-
-    async def _dispatch_command(self, message: Message, handler: Callable[[int, str], str]) -> None:
-        try:
-            actor_id = self._actor_id(message)
-            raw_command = self._raw_text(message)
-            response = handler(actor_id, raw_command)
-        except PermissionError as exc:
-            await message.answer(f"Access denied: {exc}")
-        except ValueError as exc:
-            await message.answer(f"Invalid command: {exc}")
-        except Exception:
-            logging.getLogger(__name__).exception("Unhandled command error")
-            await message.answer("Internal error while handling command.")
-        else:
-            await message.answer(response)
-
-    @staticmethod
-    def _raw_text(message: Message) -> str:
-        return message.text or ""
-
-    @staticmethod
-    def _actor_id(message: Message) -> int:
-        if message.from_user is None:
-            raise ValueError("actor cannot be resolved for system messages")
-        return message.from_user.id
-
 
 def create_container(dotenv_path: str | Path | None = None) -> Container:
-    if dotenv_path is None:
-        resolved_dotenv_path: str | Path = Path(__file__).resolve().parent.parent / ".env"
-    else:
-        resolved_dotenv_path = dotenv_path
-    config = load_config(resolved_dotenv_path)
+    """Build and wire app dependencies."""
+
+    resolved = Path(dotenv_path) if dotenv_path is not None else Path(__file__).resolve().parent.parent / ".env"
+    config = load_config(resolved)
     audit_logger = setup_logging(level=config.log_level, audit_log_path=config.audit_log_path)
+    init_db(config.db_url)
 
-    tournament_repository = TournamentRepository()
-    player_repository = PlayerRepository()
-    round_repository = RoundRepository()
-    table_repository = TableRepository()
-    game_repository = GameRepository()
-    ticket_repository = TicketRepository()
+    database = Database(config.db_url)
+    tournament_repo = TournamentRepository(database)
+    player_repo = PlayerRepository(database)
+    round_repo = RoundRepository(database)
+    game_repo = GameRepository(database)
+    report_repo = GameReportRepository(database)
+    table_repo = TableRepository(database)
+    ticket_repo = TicketRepository(database)
+    role_repo = RoleGrantRepository(database)
+    undo_repo = UndoRepository(database)
 
+    acl_service = AccessControlService(
+        admin_ids=set(config.admin_ids),
+        arbitrs_ids=set(config.arbitrs_ids),
+        role_grants_repo=role_repo,
+        player_repo=player_repo,
+    )
     notification_service = NotificationService()
-    access_control_service = AccessControlService.from_config(
-        admin_ids=config.admin_ids,
-        arbitrs_ids=config.arbitrs_ids,
+    scoring_service = ScoringService(player_repo=player_repo, round_repo=round_repo, game_repo=game_repo)
+    registration_service = RegistrationService(
+        player_repo=player_repo,
+        tournament_repo=tournament_repo,
+        table_repo=table_repo,
     )
-    scoring_service = ScoringService(
-        player_repository=player_repository,
-        round_repository=round_repository,
-        game_repository=game_repository,
+    tournament_service = TournamentService(
+        tournament_repo=tournament_repo,
+        table_repo=table_repo,
+        round_repo=round_repo,
+        player_repo=player_repo,
+        game_repo=game_repo,
+        ticket_repo=ticket_repo,
+        report_repo=report_repo,
+        default_rules=config.default_rules,
     )
+    pairing_service = PairingService(
+        tournament_repo=tournament_repo,
+        player_repo=player_repo,
+        round_repo=round_repo,
+        game_repo=game_repo,
+        table_repo=table_repo,
+        scoring_service=scoring_service,
+    )
+    result_service = ResultService(
+        player_repo=player_repo,
+        round_repo=round_repo,
+        game_repo=game_repo,
+        report_repo=report_repo,
+        scoring_service=scoring_service,
+        notification_service=notification_service,
+    )
+    ticket_service = TicketService(
+        ticket_repo=ticket_repo,
+        acl_service=acl_service,
+        audit_logger=audit_logger,
+    )
+    undo_service = UndoService(
+        database=database,
+        undo_repo=undo_repo,
+        acl_service=acl_service,
+        audit_logger=audit_logger,
+    )
+
+    tournament_service.ensure_tournament()
 
     return Container(
         config=config,
+        database=database,
         audit_logger=audit_logger,
-        tournament_service=TournamentService(tournament_repository=tournament_repository),
-        registration_service=RegistrationService(
-            player_repository=player_repository,
-            tournament_repository=tournament_repository,
-        ),
-        pairing_service=PairingService(
-            tournament_repository=tournament_repository,
-            round_repository=round_repository,
-            table_repository=table_repository,
-            game_repository=game_repository,
-        ),
-        scoring_service=scoring_service,
-        result_reporting_service=ResultReportingService(
-            game_repository=game_repository,
-            round_repository=round_repository,
-            scoring_service=scoring_service,
-            notification_service=notification_service,
-            access_control_service=access_control_service,
-        ),
-        ticket_service=TicketService(
-            ticket_repository=ticket_repository,
-            audit_logger=audit_logger,
-            access_control_service=access_control_service,
-        ),
+        tournament_repo=tournament_repo,
+        player_repo=player_repo,
+        round_repo=round_repo,
+        game_repo=game_repo,
+        report_repo=report_repo,
+        table_repo=table_repo,
+        ticket_repo=ticket_repo,
+        role_repo=role_repo,
+        undo_repo=undo_repo,
+        acl_service=acl_service,
         notification_service=notification_service,
-        access_control_service=access_control_service,
+        scoring_service=scoring_service,
+        registration_service=registration_service,
+        tournament_service=tournament_service,
+        pairing_service=pairing_service,
+        result_service=result_service,
+        ticket_service=ticket_service,
+        undo_service=undo_service,
     )
 
 
 def create_app(dotenv_path: str | Path | None = None) -> BotApplication:
-    return BotApplication(container=create_container(dotenv_path=dotenv_path))
+    """Create runnable app object."""
+
+    return BotApplication(container=create_container(dotenv_path))
 
 
-__all__ = ["Container", "BotApplication", "create_app", "create_container"]
+__all__ = ["Container", "BotApplication", "create_container", "create_app"]

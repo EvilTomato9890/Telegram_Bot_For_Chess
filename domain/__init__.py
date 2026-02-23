@@ -1,18 +1,22 @@
-"""Domain exports."""
+"""Convenient top-level exports for domain entities and enums."""
 
+from .dto import CommandSpec, HelpView, PairingOutcome, ReportOutcome
 from .models import (
     Game,
+    GameReport,
+    GameResult,
     Player,
     PlayerStatus,
+    Role,
     Round,
     RoundStatus,
-    Seat,
     Table,
     Ticket,
     TicketStatus,
     TicketType,
     Tournament,
     TournamentStatus,
+    UndoSnapshot,
 )
 
 __all__ = [
@@ -22,10 +26,17 @@ __all__ = [
     "PlayerStatus",
     "Round",
     "RoundStatus",
+    "Table",
     "Game",
+    "GameReport",
+    "GameResult",
     "Ticket",
     "TicketStatus",
     "TicketType",
-    "Table",
-    "Seat",
+    "UndoSnapshot",
+    "Role",
+    "CommandSpec",
+    "HelpView",
+    "PairingOutcome",
+    "ReportOutcome",
 ]

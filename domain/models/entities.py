@@ -1,117 +1,133 @@
-"""Core domain entities for chess tournaments."""
+"""Core domain entities for the Swiss tournament bot."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from .enums import PlayerStatus, RoundStatus, TicketStatus, TicketType, TournamentStatus
-
-_VALID_RESULT_POINTS = {0.0, 0.5, 1.0}
+from .enums import GameResult, PlayerStatus, RoundStatus, TicketStatus, TicketType, TournamentStatus
 
 
 @dataclass(slots=True)
 class Tournament:
-    id: int | None
-    name: str
+    """The only tournament in the application."""
+
+    id: int = 1
     status: TournamentStatus = TournamentStatus.DRAFT
+    number_of_rounds: int = 0
+    current_round: int = 0
+    rules_text: str = ""
+    prepared: bool = False
+    pending_pairing_payload: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass(slots=True)
 class Player:
+    """A registered participant."""
+
     id: int | None
-    tournament_id: int
-    telegram_user_id: int
-    display_name: str
-    status: PlayerStatus = PlayerStatus.REGISTERED
+    telegram_id: int
+    username: str | None
+    full_name: str
+    rating: int
+    status: PlayerStatus = PlayerStatus.ACTIVE
     score: float = 0.0
     buchholz: float = 0.0
     median_buchholz: float = 0.0
     sonneborn_berger: float = 0.0
-
-    def update_tiebreakers(self, opponents_scores: list[float], game_results: list[tuple[float, float]]) -> None:
-        """Update tiebreak values based on opponents and game outcomes.
-
-        `game_results` stores `(result_points, opponent_final_score)` tuples.
-        """
-
-        if len(opponents_scores) != len(game_results):
-            raise ValueError("opponents_scores and game_results must have equal lengths")
-
-        for score in opponents_scores:
-            if score < 0:
-                raise ValueError("Opponent scores must be non-negative")
-
-        for result_points, opponent_score in game_results:
-            if result_points not in _VALID_RESULT_POINTS:
-                raise ValueError("Result points must be one of 0.0, 0.5, 1.0")
-            if opponent_score < 0:
-                raise ValueError("Opponent scores must be non-negative")
-
-        self.buchholz = sum(opponents_scores)
-
-        if len(opponents_scores) > 2:
-            ordered = sorted(opponents_scores)
-            self.median_buchholz = sum(ordered[1:-1])
-        else:
-            self.median_buchholz = self.buchholz
-
-        self.sonneborn_berger = sum(result * opponent_score for result, opponent_score in game_results)
+    had_bye: bool = False
+    current_board: int | None = None
+    seat_hint: str | None = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass(slots=True)
 class Round:
+    """One tournament round."""
+
     id: int | None
-    tournament_id: int
     number: int
-    status: RoundStatus = RoundStatus.PLANNED
+    status: RoundStatus = RoundStatus.GENERATED
+    starts_at: datetime | None = None
+    window_end_at: datetime | None = None
+    generated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    closed_at: datetime | None = None
 
 
 @dataclass(slots=True)
 class Table:
+    """Physical board location description."""
+
     id: int | None
-    round_id: int
     number: int
-
-
-@dataclass(slots=True)
-class Seat:
-    id: int | None
-    table_id: int
-    player_id: int
-    color: str
+    location: str
+    place_hint: str | None = None
 
 
 @dataclass(slots=True)
 class Game:
+    """One pairing game in a round."""
+
     id: int | None
     round_id: int
-    table_id: int | None
+    board_number: int
     white_player_id: int
     black_player_id: int
-    result: str | None = None
+    result: GameResult | None = None
+    result_source: str | None = None
+    is_bye: bool = False
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
+@dataclass(slots=True)
+class GameReport:
+    """One player's report for a game."""
+
+    id: int | None
+    game_id: int
+    reporter_player_id: int
+    reported_result: GameResult
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass(slots=True)
 class Ticket:
+    """Ticket to call arbitrator/organizer."""
+
     id: int | None
-    author_user_id: int
     ticket_type: TicketType
+    author_telegram_id: int
     status: TicketStatus = TicketStatus.OPEN
-    assignee_user_id: int | None = None
+    assignee_telegram_id: int | None = None
     game_id: int | None = None
     description: str = ""
-    closed_by_user_id: int | None = None
+    opened_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     closed_at: datetime | None = None
+    closed_by_telegram_id: int | None = None
+
+
+@dataclass(slots=True)
+class UndoSnapshot:
+    """Serialized DB snapshot for organizer undo."""
+
+    id: int | None
+    actor_telegram_id: int
+    action_name: str
+    snapshot_json: str
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    restored_at: datetime | None = None
 
 
 __all__ = [
     "Tournament",
     "Player",
     "Round",
-    "Game",
-    "Ticket",
     "Table",
-    "Seat",
+    "Game",
+    "GameReport",
+    "Ticket",
+    "UndoSnapshot",
 ]

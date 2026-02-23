@@ -1,19 +1,30 @@
 """Domain model exports."""
 
-from .entities import Game, Player, Round, Seat, Table, Ticket, Tournament
-from .enums import PlayerStatus, RoundStatus, TicketStatus, TicketType, TournamentStatus
+from .entities import Game, GameReport, Player, Round, Table, Ticket, Tournament, UndoSnapshot
+from .enums import (
+    GameResult,
+    PlayerStatus,
+    Role,
+    RoundStatus,
+    TicketStatus,
+    TicketType,
+    TournamentStatus,
+)
 
 __all__ = [
     "Tournament",
     "Player",
     "Round",
-    "Game",
-    "Ticket",
     "Table",
-    "Seat",
+    "Game",
+    "GameReport",
+    "Ticket",
+    "UndoSnapshot",
+    "Role",
     "TournamentStatus",
     "RoundStatus",
     "PlayerStatus",
     "TicketStatus",
     "TicketType",
+    "GameResult",
 ]

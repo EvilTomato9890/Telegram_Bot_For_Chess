@@ -1,4 +1,4 @@
-"""Swiss-style pairing engine with score groups and safety constraints."""
+"""Swiss-style pairing engine with repeat and color constraints."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ class InsufficientTablesError(PairingEngineError):
 
 @dataclass(frozen=True, slots=True)
 class PairingPlayer:
-    """Player state required for pairing generation."""
+    """Minimal player data required by the pairing engine."""
 
     player_id: int
     display_name: str
@@ -27,7 +27,7 @@ class PairingPlayer:
 
 @dataclass(frozen=True, slots=True)
 class TableSlot:
-    """A playable table with optional location metadata."""
+    """Playable table metadata."""
 
     location: str
     place: str
@@ -35,7 +35,7 @@ class TableSlot:
 
 @dataclass(frozen=True, slots=True)
 class GamePairing:
-    """Resolved board assignment for one game."""
+    """Pairing result assigned to one board."""
 
     table_number: int
     location: str
@@ -46,7 +46,7 @@ class GamePairing:
 
 @dataclass(frozen=True, slots=True)
 class ByeAssignment:
-    """Assigned bye for a round with repeat flag."""
+    """Assigned bye player for odd-size round."""
 
     player_id: int
     repeated: bool
@@ -54,7 +54,7 @@ class ByeAssignment:
 
 @dataclass(frozen=True, slots=True)
 class PairingConfirmationRequest:
-    """Organizer confirmation payload for unavoidable repeats."""
+    """Organizer confirmation payload when strict constraints are impossible."""
 
     reason: str
     repeated_games: tuple[tuple[int, int], ...]
@@ -63,7 +63,7 @@ class PairingConfirmationRequest:
 
 @dataclass(frozen=True, slots=True)
 class PairingResult:
-    """Pairing generation output with notifications."""
+    """Complete pairing engine output."""
 
     games: tuple[GamePairing, ...]
     bye: ByeAssignment | None
@@ -88,12 +88,7 @@ def generate_pairings(players: list[PairingPlayer], tables: list[TableSlot]) -> 
         )
 
     ordered_players = sorted(players, key=lambda player: (-player.score, player.player_id))
-
     pairing_plan = _select_pairing_plan(ordered_players)
-    strict_pairs = pairing_plan.pairs
-    bye = pairing_plan.bye
-    confirmation_request = pairing_plan.confirmation_request
-
     games = tuple(
         GamePairing(
             table_number=index,
@@ -102,33 +97,25 @@ def generate_pairings(players: list[PairingPlayer], tables: list[TableSlot]) -> 
             white_player_id=white.player_id,
             black_player_id=black.player_id,
         )
-        for index, (white, black) in enumerate(strict_pairs, start=1)
+        for index, (white, black) in enumerate(pairing_plan.pairs, start=1)
     )
-
-    notifications = [
-        (
-            f"Board {game.table_number}: {game.white_player_id} (White) vs "
-            f"{game.black_player_id} (Black) — {game.location}, {game.place}."
-        )
+    notifications = tuple(
+        f"Board {game.table_number}: {game.white_player_id} (White) vs "
+        f"{game.black_player_id} (Black) - {game.location}, {game.place}."
         for game in games
-    ]
-    if bye is not None:
-        notifications.append(f"Player {bye.player_id} receives a bye.")
-
+    )
+    if pairing_plan.bye is not None:
+        notifications = (*notifications, f"Player {pairing_plan.bye.player_id} receives a bye.")
     return PairingResult(
         games=games,
-        bye=bye,
-        notifications=tuple(notifications),
-        confirmation_request=confirmation_request,
+        bye=pairing_plan.bye,
+        notifications=notifications,
+        confirmation_request=pairing_plan.confirmation_request,
     )
 
 
-
-def _select_pairing_plan(
-    players: list[PairingPlayer],
-) -> _PairingPlan:
+def _select_pairing_plan(players: list[PairingPlayer]) -> _PairingPlan:
     bye_options = _bye_options(players)
-
     for bye, remaining_players, bye_confirmation in bye_options:
         strict_pairs = _build_pairs(remaining_players, allow_repeats=False)
         if strict_pairs is not None:
@@ -138,7 +125,6 @@ def _select_pairing_plan(
         relaxed_pairs = _build_pairs(remaining_players, allow_repeats=True)
         if relaxed_pairs is None:
             continue
-
         repeated_games = tuple(
             (
                 min(white.player_id, black.player_id),
@@ -160,7 +146,6 @@ def _select_pairing_plan(
                 else bye_confirmation
             ),
         )
-
     raise PairingEngineError("unable to generate pairings for this round")
 
 
@@ -169,11 +154,9 @@ def _bye_options(
 ) -> list[tuple[ByeAssignment | None, list[PairingPlayer], PairingConfirmationRequest | None]]:
     if len(players) % 2 == 0:
         return [(None, players, None)]
-
     sorted_for_bye = sorted(players, key=lambda player: (player.score, player.player_id))
     preferred = [player for player in sorted_for_bye if not player.had_bye]
     repeated = [player for player in sorted_for_bye if player.had_bye]
-
     options: list[tuple[ByeAssignment | None, list[PairingPlayer], PairingConfirmationRequest | None]] = []
     for player in [*preferred, *repeated]:
         bye = ByeAssignment(player_id=player.player_id, repeated=player.had_bye)
@@ -193,31 +176,26 @@ def _bye_options(
                 confirmation,
             )
         )
-
     return options
 
 
 def _build_pairs(players: list[PairingPlayer], *, allow_repeats: bool) -> list[tuple[PairingPlayer, PairingPlayer]] | None:
     if not players:
         return []
-
     first = players[0]
     candidates = players[1:]
     scored_candidates: list[tuple[int, tuple[PairingPlayer, PairingPlayer], list[PairingPlayer]]] = []
     for candidate in candidates:
         if not allow_repeats and candidate.player_id in first.opponents:
             continue
-
         white, black = _choose_colors(first, candidate)
         penalty = _pair_penalty(white, black)
         remaining = [player for player in players if player.player_id not in {first.player_id, candidate.player_id}]
         scored_candidates.append((penalty, (white, black), remaining))
-
     for _, pair, remaining_players in sorted(scored_candidates, key=lambda item: item[0]):
         tail_pairs = _build_pairs(remaining_players, allow_repeats=allow_repeats)
         if tail_pairs is not None:
             return [pair, *tail_pairs]
-
     return None
 
 
@@ -240,3 +218,4 @@ def _color_penalty_with(player: PairingPlayer, new_color: str) -> int:
     if recent[0] == recent[1] == new_color:
         return 100
     return 0
+

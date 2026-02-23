@@ -15,6 +15,8 @@ ENV/
 
 # Test and analysis caches
 .pytest_cache/
+.pytest_tmp/
+pytest-cache-files-*/
 .mypy_cache/
 .ruff_cache/
 .pyre/

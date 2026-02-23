@@ -1,23 +1,25 @@
-"""Service layer package."""
+"""Service layer exports."""
 
-from .contracts import (
-    AccessControlService,
-    NotificationService,
-    PairingService,
-    RegistrationService,
-    ScoringService,
-    TicketService,
-    TournamentService,
-)
-from .result_reporting import ResultReportingService
+from .acl_service import AccessControlService, COMMAND_REGISTRY
+from .notification_service import NotificationService
+from .pairing_service import PairingService
+from .registration_service import RegistrationService
+from .result_service import ResultService
+from .scoring_service import ScoringService, StandingRow
+from .ticket_service import TicketService
+from .tournament_service import TournamentService
+from .undo_service import UndoService
 
 __all__ = [
-    "TournamentService",
-    "RegistrationService",
-    "PairingService",
-    "ScoringService",
-    "TicketService",
-    "NotificationService",
+    "COMMAND_REGISTRY",
     "AccessControlService",
-    "ResultReportingService",
+    "NotificationService",
+    "PairingService",
+    "RegistrationService",
+    "ResultService",
+    "ScoringService",
+    "StandingRow",
+    "TicketService",
+    "TournamentService",
+    "UndoService",
 ]

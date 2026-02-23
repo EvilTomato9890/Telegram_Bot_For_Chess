@@ -1,85 +1,86 @@
-"""Persistence-layer models mirroring database tables."""
+"""Optional simple typed row containers for SQLite adapters."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from domain.models import PlayerStatus, RoundStatus, TicketStatus, TicketType, TournamentStatus
-
 
 @dataclass(slots=True)
 class TournamentORM:
     id: int
-    name: str
-    status: TournamentStatus
+    status: str
+    number_of_rounds: int
+    current_round: int
+    rules_text: str
+    prepared: int
+    pending_pairing_payload: str | None
     created_at: str
+    updated_at: str
 
 
 @dataclass(slots=True)
 class PlayerORM:
     id: int
-    tournament_id: int
-    telegram_user_id: int
-    display_name: str
-    status: PlayerStatus
+    telegram_id: int
+    username: str | None
+    full_name: str
+    rating: int
+    status: str
     score: float
     buchholz: float
     median_buchholz: float
     sonneborn_berger: float
+    had_bye: int
+    current_board: int | None
+    seat_hint: str | None
+    created_at: str
 
 
 @dataclass(slots=True)
 class RoundORM:
     id: int
-    tournament_id: int
     number: int
-    status: RoundStatus
+    status: str
+    starts_at: str | None
+    window_end_at: str | None
+    generated_at: str
+    closed_at: str | None
 
 
 @dataclass(slots=True)
 class TableORM:
     id: int
-    round_id: int
     number: int
-
-
-@dataclass(slots=True)
-class SeatORM:
-    id: int
-    table_id: int
-    player_id: int
-    color: str
+    location: str
+    place_hint: str | None
 
 
 @dataclass(slots=True)
 class GameORM:
     id: int
     round_id: int
-    table_id: int | None
+    board_number: int
     white_player_id: int
     black_player_id: int
     result: str | None
+    result_source: str | None
+    is_bye: int
+    created_at: str
+    updated_at: str
 
 
 @dataclass(slots=True)
 class TicketORM:
     id: int
-    author_user_id: int
-    ticket_type: TicketType
-    status: TicketStatus
-    assignee_user_id: int | None
+    type: str
+    author_telegram_id: int
+    status: str
+    assignee_telegram_id: int | None
     game_id: int | None
     description: str
-    closed_by_user_id: int | None
+    opened_at: str
     closed_at: str | None
+    closed_by_telegram_id: int | None
 
 
-__all__ = [
-    "TournamentORM",
-    "PlayerORM",
-    "RoundORM",
-    "TableORM",
-    "SeatORM",
-    "GameORM",
-    "TicketORM",
-]
+__all__ = ["TournamentORM", "PlayerORM", "RoundORM", "TableORM", "GameORM", "TicketORM"]

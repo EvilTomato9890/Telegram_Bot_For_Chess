@@ -1,71 +1,98 @@
-"""Logging configuration for application and audit events."""
+"""Logging setup with dedicated structured audit sink."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+import json
 import logging
 from pathlib import Path
+from typing import Any
 
 
 class AuditFormatter(logging.Formatter):
-    """Structured formatter for audit records."""
+    """Serialize audit log record into deterministic JSON."""
 
     def format(self, record: logging.LogRecord) -> str:
-        actor = getattr(record, "actor", "-")
-        command = getattr(record, "command", "-")
-        entity = getattr(record, "entity", "-")
-        action = getattr(record, "action", "-")
-        result = getattr(record, "result", "-")
-        return (
-            f"{self.formatTime(record)} | actor={actor} | command={command} "
-            f"| entity={entity} | action={action} | result={result}"
-        )
+        payload = {
+            "timestamp": self.formatTime(record),
+            "actor_id": getattr(record, "actor_id", None),
+            "roles": getattr(record, "roles", []),
+            "command": getattr(record, "command", ""),
+            "entity": getattr(record, "entity", ""),
+            "before": getattr(record, "before", None),
+            "after": getattr(record, "after", None),
+            "result": getattr(record, "result", ""),
+            "reason": getattr(record, "reason", None),
+        }
+        return json.dumps(payload, ensure_ascii=False)
 
 
+@dataclass(slots=True)
 class AuditLogger:
-    """Simple helper to write audit events with required fields."""
+    """Structured audit event writer."""
 
-    def __init__(self, logger: logging.Logger) -> None:
-        self._logger = logger
+    logger: logging.Logger
 
-    def log_event(self, *, actor: str, command: str, entity: str, action: str, result: str) -> None:
-        self._logger.info(
+    def log_event(
+        self,
+        *,
+        actor_id: int | str,
+        roles: list[str] | tuple[str, ...],
+        command: str,
+        entity: str,
+        before: Any,
+        after: Any,
+        result: str,
+        reason: str | None = None,
+    ) -> None:
+        """Write one audit event."""
+
+        self.logger.info(
             "audit_event",
             extra={
-                "actor": actor,
+                "actor_id": actor_id,
+                "roles": list(roles),
                 "command": command,
                 "entity": entity,
-                "action": action,
+                "before": before,
+                "after": after,
                 "result": result,
+                "reason": reason,
             },
         )
 
 
 def setup_logging(level: str = "INFO", audit_log_path: str = "logs/audit.log") -> AuditLogger:
-    """Configure console and audit loggers."""
+    """Initialize console logger and dedicated audit logger."""
 
     console_level = getattr(logging, level.upper(), logging.INFO)
-    logging.basicConfig(
-        level=console_level,
-        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    root_logger = logging.getLogger()
+    root_logger.setLevel(console_level)
+    root_logger.handlers.clear()
+
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(console_level)
+    console_handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s | %(levelname)s | %(name)s | req=%(request_id)s | %(message)s",
+            defaults={"request_id": "-"},
+        )
     )
+    root_logger.addHandler(console_handler)
 
     audit_path = Path(audit_log_path)
     audit_path.parent.mkdir(parents=True, exist_ok=True)
-
-    audit_logger = logging.getLogger("audit")
-    audit_logger.setLevel(logging.INFO)
-    audit_logger.propagate = False
-
-    for handler in list(audit_logger.handlers):
-        audit_logger.removeHandler(handler)
-        handler.close()
+    audit_sink = logging.getLogger("audit")
+    audit_sink.handlers.clear()
+    audit_sink.setLevel(logging.INFO)
+    audit_sink.propagate = False
 
     file_handler = logging.FileHandler(audit_path, encoding="utf-8")
     file_handler.setLevel(logging.INFO)
     file_handler.setFormatter(AuditFormatter())
-    audit_logger.addHandler(file_handler)
+    audit_sink.addHandler(file_handler)
 
-    return AuditLogger(audit_logger)
+    return AuditLogger(logger=audit_sink)
 
 
 __all__ = ["AuditLogger", "setup_logging"]

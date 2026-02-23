@@ -1,82 +1,50 @@
-# Assumptions
+# Допущения и инварианты
 
-This document defines domain rules that services and handlers must treat as invariants.
+## 1. Один турнир
+- В БД хранится только один активный турнир (`tournaments.id = 1`).
+- Команды работают в single-tournament режиме.
 
-## 1. Tournament lifecycle
+## 2. Статусы
+- `tournament`: `draft -> registration -> ongoing -> finished`.
+- `round`: `generated -> ongoing -> closed`.
+- `player`: `active | disqualified`.
+- `ticket`: `open | assigned | closed`.
 
-Canonical lifecycle:
+## 3. Тай-брейки
+Сортировка:
+1. `score DESC`
+2. `buchholz DESC`
+3. `median_buchholz DESC`
+4. `sonneborn_berger DESC`
+5. `rating DESC`
+6. `full_name ASC`
 
-`draft -> registration -> ongoing -> finished`
+Формулы:
+- `Buchholz`: сумма очков соперников.
+- `Median Buchholz`: `Buchholz` без min/max при 3+ соперниках.
+- `Sonneborn-Berger`: сумма `(очки в партии * итоговые очки соперника)`.
 
-### Allowed transitions
+## 4. Результаты игр
+Канон:
+- `1-0`, `0-1`, `0.5-0.5`, `bye`, `forfeit`.
 
-| From status   | To status      | Allowed |
-|---------------|----------------|---------|
-| `draft`       | `registration` | ✅      |
-| `draft`       | `ongoing`      | ❌      |
-| `draft`       | `finished`     | ❌      |
-| `registration`| `ongoing`      | ✅      |
-| `registration`| `finished`     | ❌      |
-| `ongoing`     | `finished`     | ✅      |
-| `ongoing`     | `draft`        | ❌      |
-| `finished`    | any other      | ❌      |
+Нормализация `/report`:
+- `White|white|Белые|1-0` -> `1-0`
+- `Black|black|Черные|0-1` -> `0-1`
+- `Draw|draw|Ничья|0.5-0.5` -> `0.5-0.5`
 
-Rules:
+Допущение:
+- `forfeit` интерпретируется как победа белых.
 
-- Transitions are forward-only; rollback is prohibited.
-- `finished` is terminal.
+## 5. Швейцарские пары
+- Основа сортировки при генерации: `score desc`, `rating desc`, `player_id asc`.
+- Повторные встречи запрещены строго.
+- Если строгая генерация невозможна: требуется `/confirm_next_round`.
+- Третий подряд одинаковый цвет penalize (мягко).
+- Bye назначается игроку без прошлых bye, если возможно.
 
-## 2. Command validation rules by tournament status
+## 6. Undo
+- `/undo_last_action` доступен только организатору.
+- Откат применяет последний snapshot, сделанный до mutating-команд организатора.
+- Один вызов = один шаг назад.
 
-| Command type | `draft` | `registration` | `ongoing` | `finished` |
-|--------------|---------|----------------|-----------|------------|
-| Configure tournament settings | ✅ | ⚠️ (read-only except minor metadata) | ❌ | ❌ |
-| Register / unregister players | ❌ | ✅ | ❌ | ❌ |
-| Start tournament | ❌ | ✅ | ❌ | ❌ |
-| Generate pairings | ❌ | ❌ | ✅ | ❌ |
-| Submit match result | ❌ | ❌ | ✅ | ❌ |
-| Confirm / override result | ❌ | ❌ | ✅ | ❌ |
-| Finish tournament | ❌ | ❌ | ✅ | ❌ |
-
-Validation policy:
-
-- Every command checks status first.
-- If status is invalid for command, return a domain validation error and perform no state mutation.
-
-## 3. Result format
-
-Accepted result values are exactly:
-
-- `1-0`
-- `0-1`
-- `0.5-0.5`
-- `bye`
-- `forfeit`
-
-Normalization and validation:
-
-- Values are case-sensitive exact tokens.
-- Any other representation (`1:0`, `draw`, etc.) is invalid.
-- `bye` and `forfeit` are system/arbiter-controlled outcomes.
-
-## 4. Who may confirm or override result
-
-During `ongoing` status only:
-
-- **Players** can submit a proposed result for their own pairing.
-- **Opponent** can confirm proposed result.
-- **Arbiter/Admin** can confirm any pairing result.
-- **Arbiter/Admin** can override any result with mandatory reason logging.
-- **Players** cannot override a confirmed result.
-
-After `finished`:
-
-- No confirmations or overrides are allowed.
-
-## 5. Least-loaded ticket assignment
-
-For automatic ticket routing, **least-loaded** means:
-
-- Minimize `open + assigned` ticket count for candidate assignees.
-- Ignore tickets in terminal states (`resolved`, `closed`).
-- Tie-breaker: lowest `assigned` count first, then deterministic user id order.

@@ -1,20 +1,36 @@
 """Repository exports."""
 
-from .game_repository import GameRepository
-from .player_repository import PlayerRepository
-from .round_repository import RoundRepository
-from .schema import apply_migrations, init_db
-from .table_repository import TableRepository
-from .ticket_repository import TicketRepository
-from .tournament_repository import TournamentRepository
+from .schema import apply_migrations
+from .sqlite import (
+    GameReportRepository,
+    GameRepository,
+    PlayerRepository,
+    RoleGrantRepository,
+    RoundRepository,
+    TableRepository,
+    TicketRepository,
+    TournamentRepository,
+    UndoRepository,
+)
+
+
+def init_db(db_url: str):
+    """Lazy import wrapper to avoid module re-import warnings."""
+
+    from .schema.init_db import init_db as _init_db
+
+    return _init_db(db_url)
 
 __all__ = [
     "apply_migrations",
     "init_db",
-    "PlayerRepository",
     "TournamentRepository",
+    "PlayerRepository",
     "RoundRepository",
     "GameRepository",
-    "TicketRepository",
     "TableRepository",
+    "TicketRepository",
+    "GameReportRepository",
+    "UndoRepository",
+    "RoleGrantRepository",
 ]

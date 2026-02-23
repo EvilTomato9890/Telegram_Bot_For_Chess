@@ -11,9 +11,9 @@ def report_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="White", callback_data="report:white"),
-                InlineKeyboardButton(text="Black", callback_data="report:black"),
-                InlineKeyboardButton(text="Draw", callback_data="report:draw"),
+                InlineKeyboardButton(text="⚪ White", callback_data="report:white"),
+                InlineKeyboardButton(text="⚫ Black", callback_data="report:black"),
+                InlineKeyboardButton(text="🤝 Draw", callback_data="report:draw"),
             ]
         ]
     )

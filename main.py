@@ -11,7 +11,7 @@ def main() -> None:
         app = create_app(dotenv_path=dotenv_path)
         app.run()
     except (ValueError, RuntimeError) as exc:
-        raise SystemExit(str(exc)) from exc
+        raise SystemExit(str(exc))
 
 
 if __name__ == "__main__":

@@ -11,7 +11,9 @@ def test_full_tournament_flow_registration_to_finish() -> None:
     round_repo = services["round_repo"]
     game_repo = services["game_repo"]
 
-    tournament_service.create_tournament(2)
+    tournament_service.create_tournament()
+    services["table_repo"].add(Table(id=None, number=1, location="A"))
+    services["table_repo"].add(Table(id=None, number=2, location="B"))
     tournament_service.open_registration()
     registration_service.register(11, "u1", "A", 1500)
     registration_service.register(22, "u2", "B", 1400)
@@ -39,4 +41,3 @@ def test_full_tournament_flow_registration_to_finish() -> None:
 
     finished = tournament_service.finish_tournament()
     assert finished.status == TournamentStatus.FINISHED
-

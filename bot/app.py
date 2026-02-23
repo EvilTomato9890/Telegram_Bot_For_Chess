@@ -14,6 +14,7 @@ from bot.context import RouterContext
 from bot.routers import (
     build_arbitrator_router,
     build_common_router,
+    build_fallback_router,
     build_organizer_router,
     build_player_router,
 )
@@ -116,7 +117,7 @@ class BotApplication:
             logging.getLogger(__name__).info("Polling interrupted by user.")
         except RuntimeError as exc:
             logging.getLogger(__name__).error(str(exc))
-            raise SystemExit(1) from exc
+            raise SystemExit(1)
 
     async def _run_polling(self) -> None:
         dispatcher = Dispatcher()
@@ -125,12 +126,17 @@ class BotApplication:
         dispatcher.include_router(build_player_router(context))
         dispatcher.include_router(build_arbitrator_router(context))
         dispatcher.include_router(build_organizer_router(context))
+        dispatcher.include_router(build_fallback_router())
 
         @dispatcher.errors()
         async def global_error_handler(event: ErrorEvent) -> None:
             exception = event.exception
             update = event.update
-            logging.getLogger(__name__).exception("Unhandled update error: %s", exception)
+            logger = logging.getLogger(__name__)
+            if isinstance(exception, (ValueError, PermissionError)):
+                logger.warning("Handled command error: %s", exception)
+            else:
+                logger.exception("Unhandled update error: %s", exception)
             self.container.audit_logger.log_event(
                 actor_id="unknown",
                 roles=["unknown"],
@@ -141,12 +147,15 @@ class BotApplication:
                 result="error",
                 reason=str(exception),
             )
-            if isinstance(exception, ValueError) and update.message is not None:
-                await update.message.answer(f"Ошибка: {exception}")
-            elif isinstance(exception, PermissionError) and update.message is not None:
-                await update.message.answer("Недостаточно прав для этой команды.")
-            elif update.message is not None:
-                await update.message.answer("Внутренняя ошибка обработки команды.")
+            target_message = update.message or (update.callback_query.message if update.callback_query else None)
+            if isinstance(exception, ValueError) and target_message is not None:
+                await target_message.answer(f"Ошибка: {exception}")
+            elif isinstance(exception, PermissionError) and target_message is not None:
+                await target_message.answer("Недостаточно прав для этой команды.")
+            elif target_message is not None:
+                await target_message.answer("Внутренняя ошибка обработки команды.")
+            if update.callback_query is not None:
+                await update.callback_query.answer()
 
         bot = Bot(token=self.container.config.token)
         try:
@@ -215,6 +224,7 @@ def create_container(dotenv_path: str | Path | None = None) -> Container:
         round_repo=round_repo,
         game_repo=game_repo,
         report_repo=report_repo,
+        tournament_repo=tournament_repo,
         scoring_service=scoring_service,
         notification_service=notification_service,
     )
@@ -264,3 +274,4 @@ def create_app(dotenv_path: str | Path | None = None) -> BotApplication:
 
 
 __all__ = ["Container", "BotApplication", "create_container", "create_app"]
+

@@ -6,7 +6,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 import math
 
-from domain.models import PlayerStatus, RoundStatus, Table, Tournament, TournamentStatus
+from domain.models import PlayerStatus, RoundStatus, Tournament, TournamentStatus
 from repositories import (
     GameReportRepository,
     GameRepository,
@@ -47,11 +47,8 @@ class TournamentService:
 
         return self._tournament_repo.ensure_exists(default_rules=self._default_rules)
 
-    def create_tournament(self, number_of_tables: int) -> Tournament:
-        """Reset tournament into draft with predefined number of tables."""
-
-        if number_of_tables <= 0:
-            raise ValueError("Число столов должно быть положительным.")
+    def create_tournament(self) -> Tournament:
+        """Reset tournament into draft and clear all runtime data."""
 
         tournament = self.ensure_tournament()
         updated = replace(
@@ -73,10 +70,12 @@ class TournamentService:
             self._ticket_repo.clear_all(conn)
             self._player_repo.clear_all(conn)
             conn.execute("DELETE FROM tables")
-
-        # Tables are global for tournament lifecycle; recreate from scratch.
-        for number in range(1, number_of_tables + 1):
-            self._table_repo.add(Table(id=None, number=number, location=f"Стол {number}", place_hint=None))
+            conn.execute(
+                """
+                DELETE FROM sqlite_sequence
+                WHERE name IN ('players', 'rounds', 'tables', 'games', 'game_reports', 'tickets', 'role_grants', 'undo_snapshots')
+                """
+            )
 
         return stored
 
@@ -192,7 +191,7 @@ class TournamentService:
             number_of_rounds=tournament.number_of_rounds,
             current_round=0,
             rules_text=tournament.rules_text,
-            pending_pairing_payload=None,
+            pending_pairing_payload=tournament.pending_pairing_payload,
         )
 
     def end_current_round(self) -> None:

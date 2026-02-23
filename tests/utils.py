@@ -112,6 +112,7 @@ def build_services(db_url: str) -> ServiceBundle:
         round_repo=round_repo,
         game_repo=game_repo,
         report_repo=report_repo,
+        tournament_repo=tournament_repo,
         scoring_service=scoring_service,
         notification_service=notification_service,
     )
@@ -148,4 +149,3 @@ def build_services(db_url: str) -> ServiceBundle:
         "ticket_service": ticket_service,
         "undo_service": undo_service,
     }
-

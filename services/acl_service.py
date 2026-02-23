@@ -19,10 +19,11 @@ COMMAND_REGISTRY: tuple[CommandSpec, ...] = (
     CommandSpec("/my_score", frozenset({Role.PLAYER}), "Мои очки и тай-брейки"),
     CommandSpec("/standings", frozenset({Role.PLAYER, Role.ARBITRATOR, Role.ADMIN}), "Таблица лидеров"),
     CommandSpec("/report", frozenset({Role.PLAYER}), "Сообщить результат своей партии"),
-    CommandSpec("/register", frozenset({Role.PLAYER, Role.ARBITRATOR, Role.ADMIN}), "Регистрация участника"),
+    CommandSpec("/register", frozenset({Role.PLAYER}), "Регистрация самого себя в турнире"),
     CommandSpec("/create_ticket", frozenset({Role.PLAYER, Role.ARBITRATOR, Role.ADMIN}), "Создать тикет"),
     CommandSpec("/close_ticket", frozenset({Role.PLAYER, Role.ARBITRATOR, Role.ADMIN}), "Закрыть тикет"),
     CommandSpec("/approve_result", frozenset({Role.ARBITRATOR, Role.ADMIN}), "Подтвердить результат игры"),
+    CommandSpec("/ticket_queue", frozenset({Role.ARBITRATOR, Role.ADMIN}), "Очередь активных тикетов арбитра"),
     CommandSpec("/add_player", frozenset({Role.ADMIN}), "Добавить участника"),
     CommandSpec("/disqualify", frozenset({Role.ADMIN}), "Дисквалифицировать игрока"),
     CommandSpec("/tables", frozenset({Role.ADMIN}), "Список столов"),
@@ -89,9 +90,7 @@ class AccessControlService:
 
         roles = self.resolve_roles(telegram_id)
         commands = tuple(
-            spec
-            for spec in COMMAND_REGISTRY
-            if spec.name in self._PUBLIC_COMMANDS or spec.roles.intersection(roles)
+            spec for spec in COMMAND_REGISTRY if spec.name in self._PUBLIC_COMMANDS or spec.roles.intersection(roles)
         )
         return HelpView(actor_id=telegram_id, commands=commands)
 

@@ -11,8 +11,8 @@ def ticket_type_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="Арбитр", callback_data="ticket:arbitr"),
-                InlineKeyboardButton(text="Организатор", callback_data="ticket:organizer"),
+                InlineKeyboardButton(text="⚖️ Арбитр", callback_data="ticket:arbitr"),
+                InlineKeyboardButton(text="🛠 Админ", callback_data="ticket:organizer"),
             ]
         ]
     )

@@ -15,6 +15,7 @@ def build_arbitrator_router(context: RouterContext) -> Router:
     router = Router(name="arbitrator")
     acl = context.acl_service
     result_service = context.result_service
+    ticket_service = context.ticket_service
     notification_service = context.notification_service
     audit_logger = context.audit_logger
 
@@ -27,7 +28,10 @@ def build_arbitrator_router(context: RouterContext) -> Router:
         if len(parts) != 3:
             await message.answer("Формат: /approve_result <game_id> <result>")
             return
-        game_id = int(parts[1])
+        try:
+            game_id = int(parts[1])
+        except ValueError as exc:
+            raise ValueError("game_id должен быть числом.") from exc
         result = parts[2]
         result_service.approve_result(game_id=game_id, raw_result=result)
         audit_logger.log_event(
@@ -40,8 +44,29 @@ def build_arbitrator_router(context: RouterContext) -> Router:
             result="ok",
             reason=None,
         )
-        await message.answer(f"Результат игры {game_id} подтвержден.")
+        await message.answer(f"Результат игры {game_id} подтвержден: {result}.")
         for item in notification_service.flush():
             await message.answer(item)
 
+    @router.message(Command("ticket_queue"))
+    async def ticket_queue_handler(message: Message) -> None:
+        if message.from_user is None:
+            return
+        acl.require(message.from_user.id, "/ticket_queue")
+        tickets = ticket_service.ticket_queue_for_arbitrator(message.from_user.id)
+        if not tickets:
+            await message.answer("Очередь тикетов пуста.")
+            return
+        lines = []
+        for ticket in tickets:
+            lines.append(
+                (
+                    f"#{ticket.id} | type={ticket.ticket_type.value} | status={ticket.status.value} | "
+                    f"author={ticket.author_telegram_id} | assignee={ticket.assignee_telegram_id or '-'} | "
+                    f"opened={ticket.opened_at.isoformat()} | {ticket.description}"
+                )
+            )
+        await message.answer("Текущая очередь тикетов:\n" + "\n".join(lines))
+
     return router
+

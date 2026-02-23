@@ -18,3 +18,4 @@ def player_menu_keyboard() -> ReplyKeyboardMarkup:
         ],
         resize_keyboard=True,
     )
+

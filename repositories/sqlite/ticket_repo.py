@@ -106,6 +106,43 @@ class TicketRepository:
             rows = conn.execute(sql, params).fetchall()
             return [mapped for row in rows if (mapped := self._map_row(row)) is not None]
 
+    def list_active(
+        self,
+        *,
+        ticket_type: TicketType | None = None,
+        assignee_telegram_id: int | None = None,
+        include_unassigned: bool = True,
+        connection: sqlite3.Connection | None = None,
+    ) -> list[Ticket]:
+        """Return active tickets filtered by type and assignee."""
+
+        clauses = ["status IN (?, ?)"]
+        params: list[object] = [TicketStatus.OPEN.value, TicketStatus.ASSIGNED.value]
+
+        if ticket_type is not None:
+            clauses.append("type = ?")
+            params.append(ticket_type.value)
+
+        if assignee_telegram_id is not None:
+            if include_unassigned:
+                clauses.append("(assignee_telegram_id = ? OR assignee_telegram_id IS NULL)")
+            else:
+                clauses.append("assignee_telegram_id = ?")
+            params.append(assignee_telegram_id)
+
+        where_sql = " AND ".join(clauses)
+        sql = (
+            "SELECT * FROM tickets "
+            f"WHERE {where_sql} "
+            "ORDER BY CASE status WHEN 'assigned' THEN 0 ELSE 1 END, id ASC"
+        )
+        if connection is not None:
+            rows = connection.execute(sql, tuple(params)).fetchall()
+            return [mapped for row in rows if (mapped := self._map_row(row)) is not None]
+        with self._database.transaction() as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+            return [mapped for row in rows if (mapped := self._map_row(row)) is not None]
+
     def active_stats_for_assignee(self, assignee_telegram_id: int, connection: sqlite3.Connection | None = None) -> tuple[int, int]:
         sql = """
             SELECT
@@ -149,4 +186,3 @@ class TicketRepository:
             closed_at=parse_iso(row["closed_at"]),
             closed_by_telegram_id=row["closed_by_telegram_id"],
         )
-

@@ -1,6 +1,6 @@
 # Telegram Swiss Chess Bot
 
-Telegram-бот для проведения одного шахматного турнира по швейцарской системе.
+Telegram-бот для проведения шахматного турнира по швейцарской системе.
 
 ## Технологии
 - Python 3.11+
@@ -18,6 +18,7 @@ bot/
   routers/player.py
   routers/arbitrator.py
   routers/organizer.py
+  routers/fallback.py
 domain/
   models/
   dto/
@@ -76,23 +77,25 @@ python main.py
 - `ADMIN` (wire-value в БД: `organizer`)
 
 ## Команды по ролям
+
 ### PLAYER
 - `/start`
 - `/help`
 - `/rules`
-- `/register <username_or_user_id|me> <rating> <name>`
+- `/register <rating> <name>`
 - `/get_game_id`
 - `/my_next`
 - `/schedule`
 - `/my_score`
-- `/standings [top_n]`
-- `/report` (кнопки White/Black/Draw)
+- `/standings [top_n]` (доступно после старта турнира)
+- `/report` (кнопки White/Black/Draw, только при активной партии)
 - `/create_ticket <arbitr|organizer> <описание>`
 - `/close_ticket` (закрывает последний открытый тикет автора)
 
 ### ARBITRATOR
 - Все player-команды, где допускает ACL
 - `/approve_result <game_id> <result>`
+- `/ticket_queue`
 - `/close_ticket <ticket_id>`
 
 ### ADMIN
@@ -103,7 +106,7 @@ python main.py
 - `/add_table <number> <location>`
 - `/remove_table <number>`
 - `/set_rules <text>`
-- `/create_tournament <tables_count>`
+- `/create_tournament`
 - `/open_registration`
 - `/set_round_number <n> [confirm]`
 - `/prepare_tournament`
@@ -119,9 +122,13 @@ python main.py
 
 ## UX стартового экрана
 - `/start` показывает 2 inline-кнопки:
-  - `Регистрация`
-  - `Мой турнир`
-- Кнопка `Мой турнир` открывает основное reply-меню команд игрока.
+  - `📝 Регистрация`
+  - `🏆 Мой турнир`
+- Кнопка `Регистрация` запускает пошаговый flow:
+  - ввести рейтинг
+  - ввести имя/фамилию
+  - регистрация в турнир
+- Кнопка `Мой турнир` открывает основное reply-меню игрока.
 
 ## Логи
 - Console: `DEBUG/INFO/WARNING/ERROR`
@@ -129,20 +136,24 @@ python main.py
   `timestamp, actor_id, roles, command, entity, before, after, result, reason`
 
 ## Минимальные сценарии
+
 ### 1. Подготовка и старт
-1. Админ: `/create_tournament 8`
-2. Админ: `/open_registration`
-3. Игроки: `/register me 1500 Иван Иванов`
-4. Админ: `/set_round_number 5`
-5. Админ: `/prepare_tournament`
-6. Админ: `/start_tournament`
+1. Админ: `/create_tournament`
+2. Админ: `/add_table 1 Зал А`
+3. Админ: `/add_table 2 Зал B`
+4. Админ: `/open_registration`
+5. Игроки: `/register 1500 Иван Иванов`
+6. Админ: `/set_round_number 5`
+7. Админ: `/prepare_tournament`
+8. Админ: `/start_tournament`
 
 ### 2. Проведение тура
 1. Игрок: `/my_next`
 2. Игрок: `/report` -> кнопка результата
 3. При конфликте отчетов: повтор `/report` или `/create_ticket arbitr ...`
-4. Арбитр: `/approve_result <game_id> <result>` при споре
-5. Админ: `/end_round`, затем `/next_round`
+4. Арбитр: `/ticket_queue`
+5. Арбитр: `/approve_result <game_id> <result>` при споре
+6. Админ: `/end_round`, затем `/next_round`
 
 ### 3. Завершение
 1. После последнего тура: `/end_round`
@@ -153,5 +164,6 @@ python main.py
 ```bash
 python -m pytest
 python -m mypy --strict .
+python -m compileall bot domain infra repositories services keyboards tests main.py
 ```
 

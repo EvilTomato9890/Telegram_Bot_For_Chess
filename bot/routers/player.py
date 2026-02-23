@@ -22,26 +22,21 @@ def build_player_router(context: RouterContext) -> Router:
         if message.from_user is None:
             return
         acl.require(message.from_user.id, "/register")
-        parts = (message.text or "").split(maxsplit=3)
-        if len(parts) < 4:
-            await message.answer("Формат: /register <username_or_user_id|me> <рейтинг> <имя>")
+        parts = (message.text or "").split(maxsplit=2)
+        if len(parts) < 3:
+            await message.answer("Формат: /register <рейтинг> <имя и фамилия>")
             return
-        id_or_username = parts[1].strip()
-        rating = int(parts[2])
-        full_name = parts[3].strip()
-        if id_or_username == "me":
-            telegram_id = message.from_user.id
-            username = message.from_user.username
-        elif id_or_username.startswith("@"):
-            telegram_id = message.from_user.id
-            username = id_or_username[1:]
-        else:
-            telegram_id = int(id_or_username)
-            username = message.from_user.username
+        try:
+            rating = int(parts[1])
+        except ValueError as exc:
+            raise ValueError("Рейтинг должен быть целым числом.") from exc
+        full_name = parts[2].strip()
+        if not full_name:
+            raise ValueError("Имя и фамилия не могут быть пустыми.")
 
         player = registration_service.register(
-            telegram_id=telegram_id,
-            username=username,
+            telegram_id=message.from_user.id,
+            username=message.from_user.username,
             full_name=full_name,
             rating=rating,
         )
@@ -58,3 +53,4 @@ def build_player_router(context: RouterContext) -> Router:
         await message.answer(f"Регистрация успешна: #{player.id} {player.full_name}, рейтинг {player.rating}.")
 
     return router
+

@@ -1,13 +1,16 @@
-from domain.models import TournamentStatus
-from tests.utils import build_db_url, build_services
 import pytest
+
+from domain.models import Table, TournamentStatus
+from tests.utils import build_db_url, build_services
 
 
 def test_prepare_tournament_reports_missing_preconditions() -> None:
     services = build_services(build_db_url("prepare_missing"))
     tournament_service = services["tournament_service"]
+    table_repo = services["table_repo"]
 
-    tournament_service.create_tournament(1)
+    tournament_service.create_tournament()
+    table_repo.add(Table(id=None, number=1, location="A"))
     tournament_service.open_registration()
 
     with pytest.raises(ValueError) as exc:
@@ -25,7 +28,9 @@ def test_prepare_tournament_fails_when_tables_are_not_enough() -> None:
     registration_service = services["registration_service"]
     table_repo = services["table_repo"]
 
-    tournament_service.create_tournament(2)
+    tournament_service.create_tournament()
+    table_repo.add(Table(id=None, number=1, location="A"))
+    table_repo.add(Table(id=None, number=2, location="B"))
     tournament_service.open_registration()
     tournament_service.set_round_number(2, confirm=True)
     registration_service.register(1001, "u1", "A", 1500)
@@ -47,8 +52,11 @@ def test_prepare_tournament_succeeds_when_ready() -> None:
     services = build_services(build_db_url("prepare_ok"))
     tournament_service = services["tournament_service"]
     registration_service = services["registration_service"]
+    table_repo = services["table_repo"]
 
-    tournament_service.create_tournament(2)
+    tournament_service.create_tournament()
+    table_repo.add(Table(id=None, number=1, location="A"))
+    table_repo.add(Table(id=None, number=2, location="B"))
     tournament_service.open_registration()
     tournament_service.set_round_number(2, confirm=True)
     registration_service.register(2001, "v1", "A", 1500)
@@ -59,3 +67,4 @@ def test_prepare_tournament_succeeds_when_ready() -> None:
     prepared = tournament_service.prepare_tournament()
     assert prepared.prepared is True
     assert prepared.status == TournamentStatus.REGISTRATION
+

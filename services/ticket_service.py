@@ -105,6 +105,20 @@ class TicketService:
         )
         return stored
 
+    def ticket_queue_for_arbitrator(self, actor_id: int) -> list[Ticket]:
+        """Return active arbitrator queue relevant for actor."""
+
+        roles = self._acl_service.resolve_roles(actor_id)
+        if Role.ADMIN in roles:
+            return self._ticket_repo.list_active(ticket_type=TicketType.ARBITR)
+        if Role.ARBITRATOR in roles:
+            return self._ticket_repo.list_active(
+                ticket_type=TicketType.ARBITR,
+                assignee_telegram_id=actor_id,
+                include_unassigned=True,
+            )
+        raise PermissionError("Недостаточно прав для просмотра очереди тикетов.")
+
     def _select_assignee(self, role: Role) -> int | None:
         candidates = self._acl_service.user_ids_with_role(role)
         if not candidates:

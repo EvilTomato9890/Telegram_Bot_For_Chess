@@ -29,6 +29,7 @@ class PairingPlayer:
 class TableSlot:
     """Playable table metadata."""
 
+    number: int
     location: str
     place: str
 
@@ -91,13 +92,13 @@ def generate_pairings(players: list[PairingPlayer], tables: list[TableSlot]) -> 
     pairing_plan = _select_pairing_plan(ordered_players)
     games = tuple(
         GamePairing(
-            table_number=index,
-            location=tables[index - 1].location,
-            place=tables[index - 1].place,
+            table_number=slot.number,
+            location=slot.location,
+            place=slot.place,
             white_player_id=white.player_id,
             black_player_id=black.player_id,
         )
-        for index, (white, black) in enumerate(pairing_plan.pairs, start=1)
+        for slot, (white, black) in zip(tables, pairing_plan.pairs)
     )
     notifications = tuple(
         f"Board {game.table_number}: {game.white_player_id} (White) vs "
@@ -218,4 +219,3 @@ def _color_penalty_with(player: PairingPlayer, new_color: str) -> int:
     if recent[0] == recent[1] == new_color:
         return 100
     return 0
-

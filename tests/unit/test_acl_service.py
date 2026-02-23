@@ -10,6 +10,7 @@ def test_acl_or_logic_for_multi_role_user() -> None:
     assert acl.can_execute(9001, "/set_rules") is True
     # arbitrator from config
     assert acl.can_execute(9002, "/approve_result") is True
+    assert acl.can_execute(9002, "/ticket_queue") is True
     # public registration command is available for anyone
     assert acl.can_execute(777, "/register") is True
     # but non-public player commands require real player role
@@ -46,7 +47,7 @@ def test_player_role_is_granted_after_registration() -> None:
     registration = services["registration_service"]
     tournament = services["tournament_service"]
 
-    tournament.create_tournament(2)
+    tournament.create_tournament()
     tournament.open_registration()
     registration.register(777, "u777", "User 777", 1200)
 

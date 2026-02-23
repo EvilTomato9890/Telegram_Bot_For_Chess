@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from infra.config import AppConfig, load_config
 from infra.logging import AuditLogger, setup_logging
@@ -58,8 +59,12 @@ class BotApplication:
         )
 
 
-def create_container() -> Container:
-    config = load_config()
+def create_container(dotenv_path: str | Path | None = None) -> Container:
+    if dotenv_path is None:
+        resolved_dotenv_path: str | Path = Path(__file__).resolve().parent.parent / ".env"
+    else:
+        resolved_dotenv_path = dotenv_path
+    config = load_config(resolved_dotenv_path)
     audit_logger = setup_logging(level=config.log_level, audit_log_path=config.audit_log_path)
 
     tournament_repository = TournamentRepository()
@@ -112,8 +117,8 @@ def create_container() -> Container:
     )
 
 
-def create_app() -> BotApplication:
-    return BotApplication(container=create_container())
+def create_app(dotenv_path: str | Path | None = None) -> BotApplication:
+    return BotApplication(container=create_container(dotenv_path=dotenv_path))
 
 
 __all__ = ["Container", "BotApplication", "create_app", "create_container"]

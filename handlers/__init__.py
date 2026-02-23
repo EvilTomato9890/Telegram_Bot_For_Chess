@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Optional
+from typing import Callable
 
 
 class CommandError(ValueError):
@@ -57,10 +57,11 @@ class TournamentService:
             raise CommandError(reason)
 
     def create_tournament(self) -> str:
-        return self._record(
-            "/create_tournament",
-            lambda: self._create_tournament_impl(),
+        self._ensure_status(
+            (TournamentStatus.NOT_CREATED, TournamentStatus.FINISHED),
+            reason="Cannot create a new tournament until current one is finished",
         )
+        return self._record("/create_tournament", self._create_tournament_impl)
 
     def _create_tournament_impl(self) -> str:
         self.state = TournamentState(status=TournamentStatus.CREATED)
@@ -71,10 +72,7 @@ class TournamentService:
             (TournamentStatus.CREATED,),
             reason="Registration can only be opened after tournament creation",
         )
-        return self._record(
-            "/open_registration",
-            lambda: self._open_registration_impl(),
-        )
+        return self._record("/open_registration", self._open_registration_impl)
 
     def _open_registration_impl(self) -> str:
         self.state.status = TournamentStatus.REGISTRATION_OPEN
@@ -87,10 +85,7 @@ class TournamentService:
         )
         if rounds < 1:
             raise CommandError("Round number must be positive")
-        return self._record(
-            "/set_round_number",
-            lambda: self._set_round_number_impl(rounds),
-        )
+        return self._record("/set_round_number", lambda: self._set_round_number_impl(rounds))
 
     def _set_round_number_impl(self, rounds: int) -> str:
         self.state.total_rounds = rounds
@@ -103,6 +98,8 @@ class TournamentService:
             (TournamentStatus.CREATED, TournamentStatus.REGISTRATION_OPEN),
             reason="Player ratings can only be set before preparation",
         )
+        if rating <= 0:
+            raise CommandError("Player rating must be positive")
         return self._record(
             "/set_player_rating",
             lambda: self._set_player_rating_impl(player, rating),
@@ -114,15 +111,12 @@ class TournamentService:
 
     def prepare_turnament(self) -> str:
         self._ensure_status(
-            (TournamentStatus.REGISTRATION_OPEN, TournamentStatus.CREATED),
-            reason="Tournament can only be prepared before start",
+            (TournamentStatus.REGISTRATION_OPEN,),
+            reason="Tournament can only be prepared after registration is opened",
         )
         if self.state.total_rounds < 1:
             raise CommandError("Set total rounds before preparation")
-        return self._record(
-            "/prepare_turnament",
-            lambda: self._prepare_turnament_impl(),
-        )
+        return self._record("/prepare_turnament", self._prepare_turnament_impl)
 
     def _prepare_turnament_impl(self) -> str:
         self.state.status = TournamentStatus.PREPARED
@@ -134,10 +128,7 @@ class TournamentService:
             (TournamentStatus.PREPARED,),
             reason="Tournament can only be started after preparation",
         )
-        return self._record(
-            "/start_tournament",
-            lambda: self._start_tournament_impl(),
-        )
+        return self._record("/start_tournament", self._start_tournament_impl)
 
     def _start_tournament_impl(self) -> str:
         self.state.current_round = 1
@@ -145,11 +136,8 @@ class TournamentService:
         return "Tournament started, round 1 opened"
 
     def end_round(self) -> str:
-        self._ensure_status(
-            (TournamentStatus.ROUND_OPEN,),
-            reason="Can only end an opened round",
-        )
-        return self._record("/end_round", lambda: self._end_round_impl())
+        self._ensure_status((TournamentStatus.ROUND_OPEN,), reason="Can only end an opened round")
+        return self._record("/end_round", self._end_round_impl)
 
     def _end_round_impl(self) -> str:
         self.state.rounds_closed.add(self.state.current_round)
@@ -163,7 +151,7 @@ class TournamentService:
         )
         if self.state.current_round >= self.state.total_rounds:
             raise CommandError("No more rounds left")
-        return self._record("/next_round", lambda: self._next_round_impl())
+        return self._record("/next_round", self._next_round_impl)
 
     def _next_round_impl(self) -> str:
         self.state.current_round += 1
@@ -175,10 +163,9 @@ class TournamentService:
             (TournamentStatus.ROUND_CLOSED,),
             reason="Tournament can be finished only when a round is closed",
         )
-        return self._record(
-            "/finish_tournament",
-            lambda: self._finish_tournament_impl(),
-        )
+        if self.state.current_round != self.state.total_rounds:
+            raise CommandError("Cannot finish tournament before the last round")
+        return self._record("/finish_tournament", self._finish_tournament_impl)
 
     def _finish_tournament_impl(self) -> str:
         self.state.status = TournamentStatus.FINISHED
@@ -191,7 +178,9 @@ class TournamentService:
         return f"status={status}, rounds={self.state.total_rounds}"
 
     def round_info(self, round_number: int) -> str:
-        if round_number < 1 or round_number > max(self.state.total_rounds, 1):
+        if self.state.total_rounds < 1:
+            raise CommandError("Rounds are not configured")
+        if round_number < 1 or round_number > self.state.total_rounds:
             raise CommandError("Round number is out of range")
         is_closed = round_number in self.state.rounds_closed
         marker = "closed" if is_closed else "open_or_future"
@@ -206,8 +195,15 @@ class TournamentService:
 
 
 class CommandDispatcher:
-    def __init__(self, service: Optional[TournamentService] = None) -> None:
+    def __init__(self, service: TournamentService | None = None) -> None:
         self.service = service or TournamentService()
+
+    @staticmethod
+    def _parse_int(value: str, *, usage: str) -> int:
+        try:
+            return int(value)
+        except ValueError as error:
+            raise CommandError(usage) from error
 
     def execute(self, command_text: str) -> str:
         tokens = command_text.strip().split()
@@ -222,8 +218,17 @@ class CommandDispatcher:
         if command == "/set_round_number":
             if len(tokens) != 2:
                 raise CommandError("Usage: /set_round_number <n>")
-            return self.service.set_round_number(int(tokens[1]))
-        if command == "/prepare_turnament":
+            rounds = self._parse_int(tokens[1], usage="Usage: /set_round_number <n>")
+            return self.service.set_round_number(rounds)
+        if command == "/set_player_rating":
+            if len(tokens) != 3:
+                raise CommandError("Usage: /set_player_rating <player> <rating>")
+            rating = self._parse_int(
+                tokens[2],
+                usage="Usage: /set_player_rating <player> <rating>",
+            )
+            return self.service.set_player_rating(tokens[1], rating)
+        if command in {"/prepare_turnament", "/prepare_tournament"}:
             return self.service.prepare_turnament()
         if command == "/start_tournament":
             return self.service.start_tournament()
@@ -233,12 +238,13 @@ class CommandDispatcher:
             return self.service.next_round()
         if command == "/finish_tournament":
             return self.service.finish_tournament()
-        if command == "/tournament_statuc":
+        if command in {"/tournament_statuc", "/tournament_status"}:
             return self.service.tournament_statuc()
         if command == "/round":
             if len(tokens) != 2:
                 raise CommandError("Usage: /round <n>")
-            return self.service.round_info(int(tokens[1]))
+            round_number = self._parse_int(tokens[1], usage="Usage: /round <n>")
+            return self.service.round_info(round_number)
         if command == "/undo_last_action":
             return self.service.undo_last_action()
 

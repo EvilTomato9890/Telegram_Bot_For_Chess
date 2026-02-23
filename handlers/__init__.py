@@ -171,11 +171,15 @@ class TournamentService:
         self.state.status = TournamentStatus.FINISHED
         return "Tournament finished"
 
-    def tournament_statuc(self) -> str:
+    def tournament_status(self) -> str:
         status = self.state.status.value
         if self.state.current_round:
             return f"status={status}, round={self.state.current_round}/{self.state.total_rounds}"
         return f"status={status}, rounds={self.state.total_rounds}"
+
+    def tournament_statuc(self) -> str:
+        """Backward-compatible typo alias."""
+        return self.tournament_status()
 
     def round_info(self, round_number: int) -> str:
         if self.state.total_rounds < 1:
@@ -239,7 +243,7 @@ class CommandDispatcher:
         if command == "/finish_tournament":
             return self.service.finish_tournament()
         if command in {"/tournament_statuc", "/tournament_status"}:
-            return self.service.tournament_statuc()
+            return self.service.tournament_status()
         if command == "/round":
             if len(tokens) != 2:
                 raise CommandError("Usage: /round <n>")

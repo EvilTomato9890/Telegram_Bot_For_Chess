@@ -74,3 +74,14 @@ def test_aliases_and_validation_errors() -> None:
 
     with pytest.raises(CommandError, match="Usage: /round <n>"):
         dispatcher.execute("/round xyz")
+
+
+def test_tournament_status_alias_and_parse_errors() -> None:
+    dispatcher = CommandDispatcher()
+    assert dispatcher.execute("/tournament_status") == "status=not_created, rounds=0"
+
+    with pytest.raises(CommandError, match="Usage: /set_round_number <n>"):
+        dispatcher.execute("/set_round_number one")
+
+    with pytest.raises(CommandError, match="Usage: /set_player_rating <player> <rating>"):
+        dispatcher.execute("/set_player_rating alice ten")

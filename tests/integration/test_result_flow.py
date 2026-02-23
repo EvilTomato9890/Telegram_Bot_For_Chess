@@ -1,8 +1,9 @@
 from domain.models import Game, Player, Round, RoundStatus
-from tests.utils import build_db_url, build_services
+from services import NotificationService, ResultService
+from tests.utils import ServiceBundle, build_db_url, build_services
 
 
-def _bootstrap_game():
+def _bootstrap_game() -> tuple[ServiceBundle, int, ResultService, NotificationService]:
     services = build_services(build_db_url("result_flow"))
     player_repo = services["player_repo"]
     round_repo = services["round_repo"]
@@ -26,7 +27,7 @@ def _bootstrap_game():
 
 
 def test_conflicting_reports_require_resolution() -> None:
-    services, game_id, result_service, notification_service = _bootstrap_game()
+    services, _game_id, result_service, notification_service = _bootstrap_game()
     out1 = result_service.submit_player_report(501, "white")
     out2 = result_service.submit_player_report(502, "black")
     assert out1.status == "pending"
@@ -44,4 +45,3 @@ def test_matching_reports_finalize_game() -> None:
     game = services["game_repo"].get_by_id(game_id)
     assert game is not None
     assert game.result is not None
-

@@ -1,5 +1,7 @@
 """Repository exports."""
 
+from pathlib import Path
+
 from .schema import apply_migrations
 from .sqlite import (
     GameReportRepository,
@@ -14,7 +16,7 @@ from .sqlite import (
 )
 
 
-def init_db(db_url: str):
+def init_db(db_url: str) -> Path:
     """Lazy import wrapper to avoid module re-import warnings."""
 
     from .schema.init_db import init_db as _init_db

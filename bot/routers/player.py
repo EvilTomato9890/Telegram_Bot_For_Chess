@@ -6,14 +6,16 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from bot.context import RouterContext
 
-def build_player_router(context: dict[str, object]) -> Router:
+
+def build_player_router(context: RouterContext) -> Router:
     """Create player router."""
 
     router = Router(name="player")
-    acl = context["acl_service"]
-    registration_service = context["registration_service"]
-    audit_logger = context["audit_logger"]
+    acl = context.acl_service
+    registration_service = context.registration_service
+    audit_logger = context.audit_logger
 
     @router.message(Command("register"))
     async def register_handler(message: Message) -> None:

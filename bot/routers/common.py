@@ -6,26 +6,27 @@ from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 
+from bot.context import RouterContext
 from domain.models import Role, TicketType
 from keyboards import player_menu_keyboard, report_keyboard, start_keyboard
 
 
-def build_common_router(context: dict[str, object]) -> Router:
+def build_common_router(context: RouterContext) -> Router:
     """Create router with shared commands."""
 
     router = Router(name="common")
-    acl = context["acl_service"]
-    tournament_service = context["tournament_service"]
-    scoring_service = context["scoring_service"]
-    result_service = context["result_service"]
-    ticket_service = context["ticket_service"]
-    audit_logger = context["audit_logger"]
-    player_repo = context["player_repo"]
-    game_repo = context["game_repo"]
-    round_repo = context["round_repo"]
-    table_repo = context["table_repo"]
-    notification_service = context["notification_service"]
-    default_top = context["config"].standings_default_top  # type: ignore[attr-defined]
+    acl = context.acl_service
+    tournament_service = context.tournament_service
+    scoring_service = context.scoring_service
+    result_service = context.result_service
+    ticket_service = context.ticket_service
+    audit_logger = context.audit_logger
+    player_repo = context.player_repo
+    game_repo = context.game_repo
+    round_repo = context.round_repo
+    table_repo = context.table_repo
+    notification_service = context.notification_service
+    default_top = context.config.standings_default_top
 
     @router.message(Command("start"))
     async def start_handler(message: Message) -> None:
@@ -224,4 +225,3 @@ def build_common_router(context: dict[str, object]) -> Router:
         )
 
     return router
-

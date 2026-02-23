@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from domain.dto import PairingOutcome
-from domain.models import Game, GameResult, PlayerStatus, Round, RoundStatus, Tournament, TournamentStatus
+from domain.models import Game, GameResult, Player, PlayerStatus, Round, RoundStatus, Tournament, TournamentStatus
 from repositories import GameRepository, PlayerRepository, RoundRepository, TableRepository, TournamentRepository
 
 from .pairing_engine import PairingPlayer, TableSlot, generate_pairings
@@ -53,8 +53,10 @@ class PairingService:
         engine_result = generate_pairings(history, slots)
 
         if engine_result.confirmation_request is not None and not force:
+            confirmation_reason = engine_result.confirmation_request.reason
+            bye_player_id = engine_result.bye.player_id if engine_result.bye else None
             payload = {
-                "reason": engine_result.confirmation_request.reason,
+                "reason": confirmation_reason,
                 "games": [
                     {
                         "table_number": game.table_number,
@@ -64,7 +66,7 @@ class PairingService:
                     }
                     for game in engine_result.games
                 ],
-                "bye_player_id": engine_result.bye.player_id if engine_result.bye else None,
+                "bye_player_id": bye_player_id,
             }
             self._tournament_repo.update_status(
                 tournament.status,
@@ -77,9 +79,9 @@ class PairingService:
             return PairingOutcome(
                 round_number=tournament.current_round + 1,
                 games=tuple(),
-                bye_player_id=payload["bye_player_id"],
+                bye_player_id=bye_player_id,
                 needs_confirmation=True,
-                confirmation_reason=payload["reason"],
+                confirmation_reason=confirmation_reason,
             )
 
         pairing_data = [
@@ -123,7 +125,7 @@ class PairingService:
             raise ValueError("Генерация пар доступна только в ongoing.")
         return tournament
 
-    def _build_history(self, active_players: list[Any]) -> list[PairingPlayer]:
+    def _build_history(self, active_players: list[Player]) -> list[PairingPlayer]:
         games = self._game_repo.list_all()
         opponents: dict[int, set[int]] = {player.id or 0: set() for player in active_players}
         colors: dict[int, list[str]] = {player.id or 0: [] for player in active_players}
@@ -149,12 +151,25 @@ class PairingService:
         ]
 
     def _persist_pending_round(self, tournament: Tournament) -> PairingOutcome:
-        payload = json.loads(tournament.pending_pairing_payload or "{}")
-        pairing_data = payload.get("games", [])
+        raw_payload = json.loads(tournament.pending_pairing_payload or "{}")
+        if not isinstance(raw_payload, dict):
+            raise ValueError("Некорректный pending payload для подтверждения тура.")
+        raw_games = raw_payload.get("games", [])
+        pairing_data: list[dict[str, Any]] = []
+        if isinstance(raw_games, list):
+            pairing_data = [item for item in raw_games if isinstance(item, dict)]
+        raw_bye_player_id = raw_payload.get("bye_player_id")
+        bye_player_id: int | None
+        if isinstance(raw_bye_player_id, int):
+            bye_player_id = raw_bye_player_id
+        elif isinstance(raw_bye_player_id, str) and raw_bye_player_id.isdigit():
+            bye_player_id = int(raw_bye_player_id)
+        else:
+            bye_player_id = None
         return self._persist_generated_round(
             tournament=tournament,
             pairing_data=pairing_data,
-            bye_player_id=payload.get("bye_player_id"),
+            bye_player_id=bye_player_id,
         )
 
     def _persist_generated_round(
@@ -253,4 +268,3 @@ class PairingService:
         player.current_board = board_number
         player.seat_hint = f"Стол {board_number}, цвет: {color}, локация: {location}"
         self._player_repo.update(player)
-

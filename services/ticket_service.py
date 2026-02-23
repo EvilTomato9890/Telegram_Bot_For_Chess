@@ -32,11 +32,12 @@ class TicketService:
         description: str,
         game_id: int | None = None,
     ) -> Ticket:
-        """Create ticket and assign to least-loaded suitable assignee."""
+        """Create ticket and assign it to the least-loaded actor."""
 
         normalized_description = description.strip()
         if not normalized_description:
             raise ValueError("Описание тикета не может быть пустым.")
+
         target_role = Role.ARBITRATOR if ticket_type == TicketType.ARBITR else Role.ORGANIZER
         assignee = self._select_assignee(target_role)
         status = TicketStatus.ASSIGNED if assignee is not None else TicketStatus.OPEN
@@ -65,20 +66,22 @@ class TicketService:
         return ticket
 
     def close_ticket(self, actor_id: int, ticket_id: int | None = None) -> Ticket:
-        """Close ticket either by explicit id or own last open ticket."""
+        """Close explicit ticket or actor's latest own open ticket."""
 
         actor_roles = self._acl_service.resolve_roles(actor_id)
+        ticket: Ticket
         if ticket_id is None:
             own = self._ticket_repo.list_open_by_author(actor_id)
             if not own:
                 raise ValueError("У вас нет открытых тикетов.")
             ticket = own[0]
         else:
-            ticket = self._ticket_repo.get_by_id(ticket_id)
-            if ticket is None:
+            explicit_ticket = self._ticket_repo.get_by_id(ticket_id)
+            if explicit_ticket is None:
                 raise ValueError("Тикет не найден.")
-            if not self._can_close_ticket(actor_id=actor_id, actor_roles=actor_roles, ticket=ticket):
+            if not self._can_close_ticket(actor_id=actor_id, actor_roles=actor_roles, ticket=explicit_ticket):
                 raise PermissionError("Недостаточно прав для закрытия этого тикета.")
+            ticket = explicit_ticket
 
         if ticket.status == TicketStatus.CLOSED:
             raise ValueError("Тикет уже закрыт.")
@@ -122,7 +125,6 @@ class TicketService:
         if ticket.author_telegram_id == actor_id:
             return True
         if Role.ORGANIZER in actor_roles:
-            # Organizer inherits arbitrator privileges and may close any ticket.
             return True
         if Role.ARBITRATOR in actor_roles and ticket.ticket_type == TicketType.ARBITR:
             return True

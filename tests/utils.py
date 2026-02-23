@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TypedDict
 import uuid
 
 from infra import Database
+from infra.logging import setup_logging
 from repositories import (
     GameReportRepository,
     GameRepository,
@@ -29,7 +31,30 @@ from services import (
     TournamentService,
     UndoService,
 )
-from infra.logging import setup_logging
+
+
+class ServiceBundle(TypedDict):
+    """Typed dictionary with test repositories/services."""
+
+    database: Database
+    tournament_repo: TournamentRepository
+    player_repo: PlayerRepository
+    round_repo: RoundRepository
+    game_repo: GameRepository
+    report_repo: GameReportRepository
+    table_repo: TableRepository
+    ticket_repo: TicketRepository
+    role_repo: RoleGrantRepository
+    undo_repo: UndoRepository
+    acl_service: AccessControlService
+    notification_service: NotificationService
+    scoring_service: ScoringService
+    registration_service: RegistrationService
+    tournament_service: TournamentService
+    pairing_service: PairingService
+    result_service: ResultService
+    ticket_service: TicketService
+    undo_service: UndoService
 
 
 def build_db_url(prefix: str = "test") -> str:
@@ -40,7 +65,7 @@ def build_db_url(prefix: str = "test") -> str:
     return f"sqlite:///{path.as_posix()}"
 
 
-def build_services(db_url: str):
+def build_services(db_url: str) -> ServiceBundle:
     """Build repositories and services for tests."""
 
     init_db(db_url)

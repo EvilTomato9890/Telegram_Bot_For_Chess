@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import os
+import re
 
 
 @dataclass(slots=True)
@@ -42,6 +43,31 @@ def _required(name: str) -> str:
     return value
 
 
+_TOKEN_PATTERN = re.compile(r"^\d+:[A-Za-z0-9_-]{20,}$")
+_TOKEN_PLACEHOLDER_MARKERS = (
+    "exampletelegrambottoken",
+    "replace_with_real_bot_token",
+    "your_real_bot_token",
+    "your_bot_token_here",
+)
+
+
+def _validate_token(raw_token: str) -> str:
+    """Validate bot token format and common placeholder values."""
+
+    token = raw_token.strip()
+    lower_token = token.lower()
+    if any(marker in lower_token for marker in _TOKEN_PLACEHOLDER_MARKERS):
+        raise ValueError(
+            "TOKEN похож на шаблонный. Укажите реальный токен от BotFather в .env."
+        )
+    if not _TOKEN_PATTERN.match(token):
+        raise ValueError(
+            "Некорректный формат TOKEN. Ожидается строка вида '<digits>:<secret>'."
+        )
+    return token
+
+
 def _parse_ids(raw: str | None, *, field_name: str) -> list[int]:
     if raw is None or raw.strip() == "":
         return []
@@ -66,7 +92,7 @@ def load_config(dotenv_path: str | Path = ".env") -> AppConfig:
 
     _load_dotenv(Path(dotenv_path))
     return AppConfig(
-        token=_required("TOKEN"),
+        token=_validate_token(_required("TOKEN")),
         db_url=_required("DB_URL"),
         admin_ids=_parse_ids(os.getenv("ADMIN_IDS"), field_name="ADMIN_IDS"),
         arbitrs_ids=_parse_ids(os.getenv("ARBITRS_IDS"), field_name="ARBITRS_IDS"),

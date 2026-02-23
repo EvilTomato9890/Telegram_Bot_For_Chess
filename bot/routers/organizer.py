@@ -2,29 +2,31 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from domain.models import Table
+from bot.context import RouterContext
+from domain.models import Player, Table
 
 
-def build_organizer_router(context: dict[str, object]) -> Router:
+def build_organizer_router(context: RouterContext) -> Router:
     """Create organizer router with tournament admin commands."""
 
     router = Router(name="organizer")
-    acl = context["acl_service"]
-    registration_service = context["registration_service"]
-    tournament_service = context["tournament_service"]
-    table_repo = context["table_repo"]
-    player_repo = context["player_repo"]
-    round_repo = context["round_repo"]
-    game_repo = context["game_repo"]
-    pairing_service = context["pairing_service"]
-    scoring_service = context["scoring_service"]
-    undo_service = context["undo_service"]
-    notification_service = context["notification_service"]
-    audit_logger = context["audit_logger"]
+    acl = context.acl_service
+    registration_service = context.registration_service
+    tournament_service = context.tournament_service
+    table_repo = context.table_repo
+    player_repo = context.player_repo
+    round_repo = context.round_repo
+    game_repo = context.game_repo
+    pairing_service = context.pairing_service
+    scoring_service = context.scoring_service
+    undo_service = context.undo_service
+    notification_service = context.notification_service
+    audit_logger = context.audit_logger
 
     def organizer_check(message: Message, command: str) -> int:
         if message.from_user is None:
@@ -50,14 +52,17 @@ def build_organizer_router(context: dict[str, object]) -> Router:
             reason=None,
         )
 
-    async def notify_players(message: Message, text_builder) -> None:
+    async def notify_players(message: Message, text_builder: Callable[[Player], str]) -> None:
         """Notify every registered player; ignore delivery failures."""
 
+        bot = message.bot
         for player in player_repo.list_all():
             text = text_builder(player)
             notification_service.notify(f"[TO:{player.telegram_id}] {text}")
+            if bot is None:
+                continue
             try:
-                await message.bot.send_message(player.telegram_id, text)
+                await bot.send_message(player.telegram_id, text)
             except Exception:
                 continue
 
@@ -360,4 +365,3 @@ def build_organizer_router(context: dict[str, object]) -> Router:
         await message.answer(f"Новый рейтинг игрока {player.full_name}: {player.rating}")
 
     return router
-

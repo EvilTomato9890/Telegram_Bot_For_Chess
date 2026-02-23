@@ -6,15 +6,17 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from bot.context import RouterContext
 
-def build_arbitrator_router(context: dict[str, object]) -> Router:
+
+def build_arbitrator_router(context: RouterContext) -> Router:
     """Create arbitrator router."""
 
     router = Router(name="arbitrator")
-    acl = context["acl_service"]
-    result_service = context["result_service"]
-    notification_service = context["notification_service"]
-    audit_logger = context["audit_logger"]
+    acl = context.acl_service
+    result_service = context.result_service
+    notification_service = context.notification_service
+    audit_logger = context.audit_logger
 
     @router.message(Command("approve_result"))
     async def approve_result_handler(message: Message) -> None:

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from domain.dto import ReportOutcome
-from domain.models import GameResult, RoundStatus
+from domain.models import Game, GameResult, RoundStatus
 from repositories import GameReportRepository, GameRepository, PlayerRepository, RoundRepository
 
 from .notification_service import NotificationService
@@ -90,7 +90,7 @@ class ResultService:
         self._notification_service.notify(f"Арбитр подтвердил результат игры {game_id}: {result.value}.")
         self._notify_round_closed_if_needed(game.round_id)
 
-    def _resolve_game_for_player(self, player_id: int):
+    def _resolve_game_for_player(self, player_id: int) -> Game:
         games = self._game_repo.list_by_player(player_id)
         if not games:
             raise ValueError("У игрока нет партий.")
@@ -112,4 +112,3 @@ class ResultService:
             self._notification_service.notify(
                 f"[ORGANIZERS] Тур {round_.number} полностью закрыт, можно готовить следующий."
             )
-

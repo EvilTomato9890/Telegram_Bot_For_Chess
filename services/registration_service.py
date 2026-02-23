@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from domain.models import Player, PlayerStatus, TournamentStatus
+from domain.models import Player, PlayerStatus, Tournament, TournamentStatus
 from repositories import PlayerRepository, TableRepository, TournamentRepository
 
 
@@ -115,9 +115,8 @@ class RegistrationService:
                 f"Лимит участников превышен: столов {len(tables)}, максимум игроков {limit}."
             )
 
-    def _require_tournament(self):
+    def _require_tournament(self) -> Tournament:
         tournament = self._tournament_repo.get()
         if tournament is None:
             raise ValueError("Турнир еще не создан. Используйте /create_tournament.")
         return tournament
-

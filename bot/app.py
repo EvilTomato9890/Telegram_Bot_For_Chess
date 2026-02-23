@@ -6,10 +6,11 @@ import asyncio
 from dataclasses import dataclass
 import logging
 from pathlib import Path
-from typing import Any
 
 from aiogram import Bot, Dispatcher
+from aiogram.exceptions import TelegramUnauthorizedError
 from aiogram.types.error_event import ErrorEvent
+from bot.context import RouterContext
 from bot.routers import (
     build_arbitrator_router,
     build_common_router,
@@ -68,26 +69,26 @@ class Container:
     ticket_service: TicketService
     undo_service: UndoService
 
-    def as_context(self) -> dict[str, Any]:
-        """Flat dictionary used by routers."""
+    def as_context(self) -> RouterContext:
+        """Typed context object used by routers."""
 
-        return {
-            "config": self.config,
-            "audit_logger": self.audit_logger,
-            "acl_service": self.acl_service,
-            "notification_service": self.notification_service,
-            "scoring_service": self.scoring_service,
-            "registration_service": self.registration_service,
-            "tournament_service": self.tournament_service,
-            "pairing_service": self.pairing_service,
-            "result_service": self.result_service,
-            "ticket_service": self.ticket_service,
-            "undo_service": self.undo_service,
-            "player_repo": self.player_repo,
-            "round_repo": self.round_repo,
-            "game_repo": self.game_repo,
-            "table_repo": self.table_repo,
-        }
+        return RouterContext(
+            config=self.config,
+            audit_logger=self.audit_logger,
+            acl_service=self.acl_service,
+            notification_service=self.notification_service,
+            scoring_service=self.scoring_service,
+            registration_service=self.registration_service,
+            tournament_service=self.tournament_service,
+            pairing_service=self.pairing_service,
+            result_service=self.result_service,
+            ticket_service=self.ticket_service,
+            undo_service=self.undo_service,
+            player_repo=self.player_repo,
+            round_repo=self.round_repo,
+            game_repo=self.game_repo,
+            table_repo=self.table_repo,
+        )
 
 
 @dataclass(slots=True)
@@ -113,6 +114,9 @@ class BotApplication:
             asyncio.run(self._run_polling())
         except KeyboardInterrupt:
             logging.getLogger(__name__).info("Polling interrupted by user.")
+        except RuntimeError as exc:
+            logging.getLogger(__name__).error(str(exc))
+            raise SystemExit(1) from exc
 
     async def _run_polling(self) -> None:
         dispatcher = Dispatcher()
@@ -147,6 +151,11 @@ class BotApplication:
         bot = Bot(token=self.container.config.token)
         try:
             await dispatcher.start_polling(bot)
+        except TelegramUnauthorizedError as exc:
+            raise RuntimeError(
+                "Ошибка авторизации Telegram API. Проверьте TOKEN в .env: "
+                "он должен быть актуальным токеном BotFather, без кавычек и пробелов."
+            ) from exc
         finally:
             await bot.session.close()
 

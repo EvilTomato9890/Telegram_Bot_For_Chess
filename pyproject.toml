@@ -4,7 +4,7 @@ pythonpath = ["."]
 [tool.mypy]
 strict = true
 python_version = "3.11"
-files = ["handlers", "tests"]
+files = ["handlers", "keyboards", "tests"]
 
 [tool.ruff]
 line-length = 100

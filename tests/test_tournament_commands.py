@@ -113,6 +113,16 @@ def test_ticket_and_result_flow_for_player_and_arbitrator() -> None:
         dispatcher.execute("/close_ticket 1")
 
 
+def test_usage_and_arbitrator_validation_errors_are_consistent() -> None:
+    dispatcher = CommandDispatcher()
+
+    with pytest.raises(CommandError, match="Usage: /create_ticket <topic>"):
+        dispatcher.execute("/create_ticket")
+
+    with pytest.raises(CommandError, match="No reported result for R2-B1"):
+        dispatcher.execute("/approve_result R2-B1")
+
+
 def test_help_messages_and_keyboard_payload() -> None:
     dispatcher = CommandDispatcher()
 

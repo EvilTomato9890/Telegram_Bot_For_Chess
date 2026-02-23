@@ -261,7 +261,7 @@ class TournamentService:
 
     def approve_result(self, game_id: str) -> str:
         if game_id not in self.state.reported_results:
-            raise CommandError(f"No reported result for {game_id}")
+            raise CommandError(ResponseFormatter.no_reported_result(game_id))
         return self._record("/approve_result", lambda: self._approve_result_impl(game_id))
 
     def _approve_result_impl(self, game_id: str) -> str:
@@ -340,7 +340,7 @@ class CommandDispatcher:
             return self.service.register()
         if command == "/create_ticket":
             if len(tokens) < 2:
-                raise CommandError("Usage: /create_ticket <topic>")
+                raise CommandError(ResponseFormatter.USAGE_CREATE_TICKET)
             return self.service.create_ticket(" ".join(tokens[1:]))
         if command == "/close_ticket":
             if len(tokens) != 2:

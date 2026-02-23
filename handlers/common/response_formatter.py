@@ -20,6 +20,7 @@ class ResponseFormatter:
     USAGE_REPORT = "Usage: /report <game_id> <result>"
     USAGE_APPROVE_RESULT = "Usage: /approve_result <game_id>"
     USAGE_CLOSE_TICKET = "Usage: /close_ticket <ticket_id>"
+    USAGE_CREATE_TICKET = "Usage: /create_ticket <topic>"
 
     HELP_PLAYER = (
         "Player commands:\n"
@@ -82,6 +83,10 @@ class ResponseFormatter:
     @staticmethod
     def result_approved(game_id: str) -> str:
         return f"Result for {game_id} approved"
+
+    @staticmethod
+    def no_reported_result(game_id: str) -> str:
+        return f"No reported result for {game_id}"
 
     @staticmethod
     def ticket_not_found(ticket_id: int) -> str:

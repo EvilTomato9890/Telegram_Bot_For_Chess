@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Callable
 
@@ -44,10 +45,85 @@ class CommandRecord:
     snapshot: TournamentState
 
 
-class TournamentService:
+@dataclass(frozen=True, slots=True)
+class AuditRecord:
+    actor: str
+    command: str
+    timestamp: str
+    outcome: str
+
+
+class NotificationService:
     def __init__(self) -> None:
+        self.messages: list[str] = []
+
+    def _push(self, message: str) -> str:
+        self.messages.append(message)
+        return message
+
+    def round_started(self, round_number: int) -> str:
+        return self._push(f"Notification: round {round_number} started")
+
+    def round_ended(self, round_number: int) -> str:
+        return self._push(f"Notification: round {round_number} ended")
+
+    def pairs_published(self, round_number: int) -> str:
+        return self._push(f"Notification: pairings for round {round_number} published")
+
+    def rules_updated(self) -> str:
+        return self._push("Notification: tournament rules updated")
+
+    def tournament_finished(self, player: str, position: int) -> str:
+        return self._push(f"Notification: tournament finished, {player} position #{position}")
+
+
+class ScheduleService:
+    def round_windows(self, total_rounds: int) -> tuple[str, ...]:
+        if total_rounds < 1:
+            return ()
+        return tuple(
+            f"Round {round_number}: day {2 * round_number - 1} 10:00-22:00"
+            for round_number in range(1, total_rounds + 1)
+        )
+
+
+class TournamentService:
+    CRITICAL_COMMANDS = {
+        "/create_tournament",
+        "/open_registration",
+        "/set_round_number",
+        "/set_player_rating",
+        "/prepare_turnament",
+        "/start_tournament",
+        "/end_round",
+        "/next_round",
+        "/finish_tournament",
+        "/update_rules",
+        "/approve_result",
+        "/close_ticket",
+    }
+
+    def __init__(
+        self,
+        notification_service: NotificationService | None = None,
+        schedule_service: ScheduleService | None = None,
+        now_provider: Callable[[], datetime] | None = None,
+    ) -> None:
         self.state = TournamentState()
         self.command_log: list[CommandRecord] = []
+        self.audit_log: list[AuditRecord] = []
+        self.notification_service = notification_service or NotificationService()
+        self.schedule_service = schedule_service or ScheduleService()
+        self._now_provider = now_provider or (lambda: datetime.now(timezone.utc))
+
+    def _log_critical(self, command: str, outcome: str, actor: str = "system") -> None:
+        if command not in self.CRITICAL_COMMANDS:
+            return
+        timestamp = self._now_provider().isoformat()
+        print(f"[critical] actor={actor} command={command} timestamp={timestamp} outcome={outcome}")
+        self.audit_log.append(
+            AuditRecord(actor=actor, command=command, timestamp=timestamp, outcome=outcome)
+        )
 
     def _record(self, command: str, action: Callable[[], str]) -> str:
         snapshot = copy.deepcopy(self.state)
@@ -73,7 +149,9 @@ class TournamentService:
 
     def _create_tournament_impl(self) -> str:
         self.state = TournamentState(status=TournamentStatus.CREATED)
-        return "Tournament created"
+        message = "Tournament created"
+        self._log_critical("/create_tournament", message)
+        return message
 
     def open_registration(self) -> str:
         self._ensure_status(
@@ -84,7 +162,9 @@ class TournamentService:
 
     def _open_registration_impl(self) -> str:
         self.state.status = TournamentStatus.REGISTRATION_OPEN
-        return "Registration opened"
+        message = "Registration opened"
+        self._log_critical("/open_registration", message)
+        return message
 
     def set_round_number(self, rounds: int) -> str:
         self._ensure_status(
@@ -97,7 +177,9 @@ class TournamentService:
 
     def _set_round_number_impl(self, rounds: int) -> str:
         self.state.total_rounds = rounds
-        return f"Round number set to {rounds}"
+        message = f"Round number set to {rounds}"
+        self._log_critical("/set_round_number", message)
+        return message
 
     def set_player_rating(self, player: str, rating: int) -> str:
         if self.state.players_ratings_locked:
@@ -115,7 +197,9 @@ class TournamentService:
 
     def _set_player_rating_impl(self, player: str, rating: int) -> str:
         self.state.players_ratings[player] = rating
-        return f"Rating for {player} set to {rating}"
+        message = f"Rating for {player} set to {rating}"
+        self._log_critical("/set_player_rating", message, actor=player)
+        return message
 
     def prepare_turnament(self) -> str:
         self._ensure_status(
@@ -129,7 +213,9 @@ class TournamentService:
     def _prepare_turnament_impl(self) -> str:
         self.state.status = TournamentStatus.PREPARED
         self.state.players_ratings_locked = True
-        return "Tournament prepared"
+        message = "Tournament prepared"
+        self._log_critical("/prepare_turnament", message)
+        return message
 
     def start_tournament(self) -> str:
         self._ensure_status(
@@ -141,7 +227,11 @@ class TournamentService:
     def _start_tournament_impl(self) -> str:
         self.state.current_round = 1
         self.state.status = TournamentStatus.ROUND_OPEN
-        return "Tournament started, round 1 opened"
+        self.notification_service.round_started(1)
+        self.notification_service.pairs_published(1)
+        message = "Tournament started, round 1 opened"
+        self._log_critical("/start_tournament", message)
+        return message
 
     def end_round(self) -> str:
         self._ensure_status((TournamentStatus.ROUND_OPEN,), reason="Can only end an opened round")
@@ -150,7 +240,10 @@ class TournamentService:
     def _end_round_impl(self) -> str:
         self.state.rounds_closed.add(self.state.current_round)
         self.state.status = TournamentStatus.ROUND_CLOSED
-        return f"Round {self.state.current_round} ended"
+        self.notification_service.round_ended(self.state.current_round)
+        message = f"Round {self.state.current_round} ended"
+        self._log_critical("/end_round", message)
+        return message
 
     def next_round(self) -> str:
         self._ensure_status(
@@ -164,7 +257,11 @@ class TournamentService:
     def _next_round_impl(self) -> str:
         self.state.current_round += 1
         self.state.status = TournamentStatus.ROUND_OPEN
-        return f"Round {self.state.current_round} opened"
+        self.notification_service.round_started(self.state.current_round)
+        self.notification_service.pairs_published(self.state.current_round)
+        message = f"Round {self.state.current_round} opened"
+        self._log_critical("/next_round", message)
+        return message
 
     def finish_tournament(self) -> str:
         self._ensure_status(
@@ -177,7 +274,20 @@ class TournamentService:
 
     def _finish_tournament_impl(self) -> str:
         self.state.status = TournamentStatus.FINISHED
-        return "Tournament finished"
+        position = self._player_position("me")
+        self.notification_service.tournament_finished("me", position)
+        message = "Tournament finished"
+        self._log_critical("/finish_tournament", message)
+        return message
+
+    def _player_position(self, player: str) -> int:
+        sorted_players = sorted(
+            self.state.player_scores.items(), key=lambda item: (-item[1], item[0])
+        )
+        for idx, (name, _) in enumerate(sorted_players, start=1):
+            if name == player:
+                return idx
+        return len(sorted_players) + 1
 
     def tournament_status(self) -> str:
         status = self.state.status.value
@@ -216,8 +326,17 @@ class TournamentService:
         return ResponseFormatter.my_next("board 1, white vs black")
 
     def schedule(self) -> str:
-        current_round = max(1, self.state.current_round)
-        return ResponseFormatter.schedule(self.state.total_rounds, current_round)
+        windows = self.schedule_service.round_windows(self.state.total_rounds)
+        if not windows:
+            current_round = max(1, self.state.current_round)
+            return ResponseFormatter.schedule(self.state.total_rounds, current_round)
+        return ResponseFormatter.schedule_windows(windows)
+
+    def update_rules(self) -> str:
+        self.notification_service.rules_updated()
+        message = "Rules updated"
+        self._log_critical("/update_rules", message)
+        return message
 
     def my_score(self) -> str:
         score = self.state.player_scores.get("me", 0.0)
@@ -257,7 +376,9 @@ class TournamentService:
 
     def _close_ticket_impl(self, ticket_id: int) -> str:
         del self.state.open_tickets[ticket_id]
-        return ResponseFormatter.ticket_closed(ticket_id)
+        message = ResponseFormatter.ticket_closed(ticket_id)
+        self._log_critical("/close_ticket", message)
+        return message
 
     def approve_result(self, game_id: str) -> str:
         if game_id not in self.state.reported_results:
@@ -266,7 +387,9 @@ class TournamentService:
 
     def _approve_result_impl(self, game_id: str) -> str:
         self.state.approved_results.add(game_id)
-        return ResponseFormatter.result_approved(game_id)
+        message = ResponseFormatter.result_approved(game_id)
+        self._log_critical("/approve_result", message)
+        return message
 
 
 class CommandDispatcher:
@@ -328,6 +451,8 @@ class CommandDispatcher:
             return self.service.my_next()
         if command == "/schedule":
             return self.service.schedule()
+        if command == "/update_rules":
+            return self.service.update_rules()
         if command == "/my_score":
             return self.service.my_score()
         if command == "/standings":

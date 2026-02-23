@@ -20,6 +20,7 @@ class PairingPlayer:
     player_id: int
     display_name: str
     score: float
+    rating: int
     opponents: frozenset[int]
     color_history: tuple[str, ...]
     had_bye: bool = False
@@ -88,7 +89,7 @@ def generate_pairings(players: list[PairingPlayer], tables: list[TableSlot]) -> 
             f"insufficient tables: required {games_in_round}, provided {len(tables)}"
         )
 
-    ordered_players = sorted(players, key=lambda player: (-player.score, player.player_id))
+    ordered_players = sorted(players, key=lambda player: (-player.score, -player.rating, player.player_id))
     pairing_plan = _select_pairing_plan(ordered_players)
     games = tuple(
         GamePairing(

@@ -11,7 +11,7 @@ from domain.dto import PairingOutcome
 from domain.models import Game, GameResult, Player, PlayerStatus, Round, RoundStatus, Tournament, TournamentStatus
 from repositories import GameRepository, PlayerRepository, RoundRepository, TableRepository, TournamentRepository
 
-from .pairing_engine import PairingPlayer, TableSlot, generate_pairings
+from .pairing_engine import InsufficientTablesError, PairingPlayer, TableSlot, generate_pairings
 from .scoring_service import ScoringService
 
 
@@ -157,7 +157,13 @@ class PairingService:
             for table in tables
         ]
         history = self._build_history(active_players)
-        engine_result = generate_pairings(history, slots)
+        try:
+            engine_result = generate_pairings(history, slots)
+        except InsufficientTablesError as exc:
+            required_tables = len(active_players) // 2
+            raise ValueError(
+                f"Недостаточно столов для генерации тура: нужно минимум {required_tables}, доступно {len(tables)}."
+            ) from exc
 
         games = [
             {
@@ -197,6 +203,7 @@ class PairingService:
                 player_id=player.id or 0,
                 display_name=player.full_name,
                 score=player.score,
+                rating=player.rating,
                 opponents=frozenset(opponents.get(player.id or 0, set())),
                 color_history=tuple(colors.get(player.id or 0, [])),
                 had_bye=had_bye.get(player.id or 0, False),
@@ -399,4 +406,3 @@ class PairingService:
         player.current_board = board_number
         player.seat_hint = f"Стол {board_number}, цвет: {color}, локация: {location}"
         self._player_repo.update(player)
-

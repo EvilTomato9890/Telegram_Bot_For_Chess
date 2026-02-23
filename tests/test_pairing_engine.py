@@ -133,3 +133,19 @@ def test_pairing_engine_fails_when_tables_are_insufficient() -> None:
             [_player(1, 1.0), _player(2, 1.0), _player(3, 1.0), _player(4, 1.0)],
             [TableSlot(location="Main", place="Only")],
         )
+
+
+def test_pairing_engine_requests_confirmation_for_repeated_bye_when_all_had_bye() -> None:
+    players = [
+        _player(1, 2.0, had_bye=True),
+        _player(2, 1.0, had_bye=True),
+        _player(3, 0.0, had_bye=True),
+    ]
+
+    result = generate_pairings(players, [TableSlot(location="Main", place="A")])
+
+    assert result.bye is not None
+    assert result.bye.repeated is True
+    assert result.confirmation_request is not None
+    assert "repeated bye" in result.confirmation_request.reason
+    assert result.confirmation_request.repeated_bye_player_id == result.bye.player_id

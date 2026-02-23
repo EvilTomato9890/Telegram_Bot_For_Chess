@@ -178,9 +178,11 @@ class TicketService:
             command="/create_ticket",
             entity=f"ticket:{ticket.id}",
             action=(
-                f"created type={ticket.ticket_type.value} assignee={assignee_user_id}"
+                f"created ticket_id={ticket.id} type={ticket.ticket_type.value} "
+                f"game_id={ticket.game_id} assignee={assignee_user_id}"
                 if assignee_user_id is not None
-                else f"created type={ticket.ticket_type.value} assignee=none"
+                else f"created ticket_id={ticket.id} type={ticket.ticket_type.value} "
+                f"game_id={ticket.game_id} assignee=none"
             ),
             result="ok",
         )
@@ -210,7 +212,10 @@ class TicketService:
             actor=str(closed_by),
             command="/close_ticket",
             entity=f"ticket:{ticket_id}",
-            action="closed",
+            action=(
+                f"closed ticket_id={ticket_id} type={ticket.ticket_type.value} "
+                f"assignee={ticket.assignee_user_id} author={ticket.author_user_id}"
+            ),
             result="ok",
         )
         return closed_ticket

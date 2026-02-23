@@ -41,3 +41,22 @@ def test_player_can_execute_report_command() -> None:
 
     assert service.can_execute(11, "/report") is True
     assert service.can_execute(11, "/approve_result") is False
+
+
+def test_single_role_user_gets_expected_acl_commands() -> None:
+    service = AccessControlService(config_roles_by_user={12: {"player"}})
+
+    allowed = service.allowed_commands(12)
+
+    assert "/report" in allowed
+    assert "/pairings" not in allowed
+    assert "/approve_result" not in allowed
+
+
+def test_multi_role_user_receives_union_of_permissions() -> None:
+    service = AccessControlService(config_roles_by_user={13: {"player"}, 99: {"admin"}})
+    service.grant_role(actor_id=99, target_user_id=13, role="arbiter")
+
+    assert service.can_execute(13, "/report") is True
+    assert service.can_execute(13, "/approve_result") is True
+    assert service.can_execute(13, "/pairings") is True

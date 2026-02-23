@@ -43,6 +43,8 @@ class ResultReportingService:
     def submit_report(self, player_id: int, result: str) -> ReportResolution:
         normalized_result = self._scoring_service.validate_result(result)
         game = self._resolve_current_or_last_game(player_id)
+        if game.result is not None:
+            raise ValueError("game result is already finalized; ask arbiter to use /approve_result")
 
         game_id = self._require_game_id(game)
         reports = self._reports_by_game.setdefault(game_id, {})

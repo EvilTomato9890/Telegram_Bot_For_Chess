@@ -96,12 +96,14 @@ class Game:
 @dataclass(slots=True)
 class Ticket:
     id: int | None
-    author_player_id: int
+    author_user_id: int
     ticket_type: TicketType
     status: TicketStatus = TicketStatus.OPEN
+    assignee_user_id: int | None = None
     game_id: int | None = None
-    title: str = ""
-    body: str = ""
+    description: str = ""
+    closed_by_user_id: int | None = None
+    closed_at: datetime | None = None
 
 
 __all__ = [

@@ -22,9 +22,25 @@ class TicketRepository:
         self._tickets[ticket_id] = stored
         return stored
 
-    def list_open(self) -> list[Ticket]:
-        terminal = {TicketStatus.RESOLVED, TicketStatus.CLOSED}
-        return [t for t in self._tickets.values() if t.status not in terminal]
+    def get(self, ticket_id: int) -> Ticket | None:
+        return self._tickets.get(ticket_id)
+
+    def update(self, ticket: Ticket) -> Ticket:
+        if ticket.id is None:
+            raise ValueError("ticket id is required")
+        self._tickets[ticket.id] = ticket
+        return ticket
+
+    def list_active(self) -> list[Ticket]:
+        active_statuses = {TicketStatus.OPEN, TicketStatus.ASSIGNED}
+        return [t for t in self._tickets.values() if t.status in active_statuses]
+
+    def active_count_by_assignee(self, assignee_user_id: int) -> int:
+        return sum(
+            1
+            for ticket in self.list_active()
+            if ticket.assignee_user_id == assignee_user_id
+        )
 
 
 __all__ = ["TicketRepository"]

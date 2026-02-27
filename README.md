@@ -100,12 +100,14 @@ python main.py
 
 ### ADMIN
 - Все команды арбитра
-- `/add_player <telegram_id|@username> <name>`
+- `/add_player <telegram_id|@username> <rating> <name>`
+- `/delete_player <player_id>`
 - `/disqualify <player_id>`
 - `/tables`
-- `/add_table <number> <location>`
+- `/add_table <number> <location> [| <place_hint>]`
 - `/remove_table <number>`
 - `/set_rules <text>`
+- `/announce <text>`
 - `/create_tournament`
 - `/open_registration`
 - `/set_round_number <n> [confirm]`
@@ -166,4 +168,3 @@ python -m pytest
 python -m mypy --strict .
 python -m compileall bot domain infra repositories services keyboards tests main.py
 ```
-

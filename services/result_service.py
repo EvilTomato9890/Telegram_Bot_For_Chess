@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from domain.dto import ReportOutcome
+from domain.dto import ApproveOutcome, ReportOutcome
 from domain.models import Game, RoundStatus, TournamentStatus
 from repositories import GameReportRepository, GameRepository, PlayerRepository, RoundRepository, TournamentRepository
 
@@ -56,11 +56,12 @@ class ResultService:
 
         game_id = game.id or 0
         self._report_repo.upsert(game_id, player.id, result)
+        white_tg, black_tg = self._resolve_player_telegram_ids(game)
 
         opponent_id = game.black_player_id if game.white_player_id == player.id else game.white_player_id
         reports = self._report_repo.list_by_game(game_id)
-        own = next((r for r in reports if r.reporter_player_id == player.id), None)
-        opp = next((r for r in reports if r.reporter_player_id == opponent_id), None)
+        own = next((report for report in reports if report.reporter_player_id == player.id), None)
+        opp = next((report for report in reports if report.reporter_player_id == opponent_id), None)
         if own is None:
             raise ValueError("Не удалось сохранить отчет.")
         if opp is None:
@@ -68,6 +69,9 @@ class ResultService:
                 game_id=game_id,
                 status="pending",
                 message=f"Ваш результат {own.reported_result.value} сохранен, ожидаем отчет соперника.",
+                confirmed_result=own.reported_result.value,
+                white_telegram_id=white_tg,
+                black_telegram_id=black_tg,
             )
 
         if opp.reported_result == own.reported_result:
@@ -77,19 +81,20 @@ class ResultService:
             self._game_repo.update(game)
             self._report_repo.delete_by_game(game_id)
             self._scoring_service.recalculate()
-            self._notification_service.notify(
-                f"Игра {game_id}: оба игрока подтвердили результат {own.reported_result.value}."
-            )
-            self._notify_round_closed_if_needed(game.round_id)
+            round_closed, round_number = self._close_round_if_needed(game.round_id)
+            next_round_hint = self._next_round_hint(round_number)
             return ReportOutcome(
                 game_id=game_id,
                 status="agreed",
                 message=f"Результат подтвержден: {own.reported_result.value}.",
+                confirmed_result=own.reported_result.value,
+                white_telegram_id=white_tg,
+                black_telegram_id=black_tg,
+                round_closed=round_closed,
+                round_number=round_number,
+                next_round_hint=next_round_hint,
             )
 
-        self._notification_service.notify(
-            f"Конфликт репортов в игре {game_id}. Повторите /report или вызовите арбитра."
-        )
         return ReportOutcome(
             game_id=game_id,
             status="conflict",
@@ -97,9 +102,12 @@ class ResultService:
                 f"Конфликт: ваш результат {own.reported_result.value}, "
                 f"у соперника {opp.reported_result.value}."
             ),
+            confirmed_result=own.reported_result.value,
+            white_telegram_id=white_tg,
+            black_telegram_id=black_tg,
         )
 
-    def approve_result(self, game_id: int, raw_result: str) -> None:
+    def approve_result(self, game_id: int, raw_result: str) -> ApproveOutcome:
         """Arbitrator/admin overrides game result for current round only."""
 
         game = self._game_repo.get_by_id(game_id)
@@ -121,8 +129,19 @@ class ResultService:
         self._game_repo.update(game)
         self._report_repo.delete_by_game(game_id)
         self._scoring_service.recalculate()
-        self._notification_service.notify(f"Арбитр подтвердил результат игры {game_id}: {result.value}.")
-        self._notify_round_closed_if_needed(game.round_id)
+
+        round_closed, round_number = self._close_round_if_needed(game.round_id)
+        white_tg, black_tg = self._resolve_player_telegram_ids(game)
+        return ApproveOutcome(
+            game_id=game_id,
+            confirmed_result=result.value,
+            message=f"Результат игры {game_id} подтвержден: {result.value}.",
+            white_telegram_id=white_tg,
+            black_telegram_id=black_tg,
+            round_closed=round_closed,
+            round_number=round_number,
+            next_round_hint=self._next_round_hint(round_number),
+        )
 
     def _resolve_game_for_player(self, player_id: int) -> Game:
         tournament = self._tournament_repo.get()
@@ -140,17 +159,40 @@ class ResultService:
                 return game
         raise ValueError("Нет активной партии для /report.")
 
-    def _notify_round_closed_if_needed(self, round_id: int) -> None:
+    def _resolve_player_telegram_ids(self, game: Game) -> tuple[int | None, int | None]:
+        white_player = self._player_repo.get_by_id(game.white_player_id)
+        black_player = self._player_repo.get_by_id(game.black_player_id)
+        return (
+            white_player.telegram_id if white_player is not None else None,
+            black_player.telegram_id if black_player is not None else None,
+        )
+
+    def _close_round_if_needed(self, round_id: int) -> tuple[bool, int | None]:
         round_ = self._round_repo.get_by_id(round_id)
         if round_ is None:
-            return
+            return (False, None)
         games = self._game_repo.list_by_round(round_id)
         if games and all(game.result is not None for game in games):
             if round_.status != RoundStatus.CLOSED:
                 round_.status = RoundStatus.CLOSED
                 round_.closed_at = datetime.now(UTC)
                 self._round_repo.update(round_)
-            self._notification_service.notify(
-                f"[ORGANIZERS] Тур {round_.number} полностью закрыт, можно готовить следующий."
-            )
+            return (True, round_.number)
+        return (False, round_.number)
 
+    def _next_round_hint(self, current_round_number: int | None) -> str:
+        if current_round_number is None:
+            return "Время следующего тура пока не назначено."
+        next_round = self._round_repo.get_by_number(current_round_number + 1)
+        if next_round is None:
+            return "Время следующего тура пока не назначено."
+        if next_round.starts_at is not None and next_round.window_end_at is not None:
+            return (
+                f"Следующий тур {next_round.number}: "
+                f"{next_round.starts_at.isoformat()} - {next_round.window_end_at.isoformat()}."
+            )
+        if next_round.starts_at is not None:
+            return f"Следующий тур {next_round.number}: начало {next_round.starts_at.isoformat()}."
+        if next_round.window_end_at is not None:
+            return f"Следующий тур {next_round.number}: дедлайн {next_round.window_end_at.isoformat()}."
+        return "Время следующего тура пока не назначено."

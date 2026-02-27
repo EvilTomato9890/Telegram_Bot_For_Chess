@@ -16,7 +16,6 @@ def build_arbitrator_router(context: RouterContext) -> Router:
     acl = context.acl_service
     result_service = context.result_service
     ticket_service = context.ticket_service
-    notification_service = context.notification_service
     audit_logger = context.audit_logger
 
     @router.message(Command("approve_result"))
@@ -33,20 +32,29 @@ def build_arbitrator_router(context: RouterContext) -> Router:
         except ValueError as exc:
             raise ValueError("game_id должен быть числом.") from exc
         result = parts[2]
-        result_service.approve_result(game_id=game_id, raw_result=result)
+        outcome = result_service.approve_result(game_id=game_id, raw_result=result)
         audit_logger.log_event(
             actor_id=message.from_user.id,
             roles=[role.value for role in acl.resolve_roles(message.from_user.id)],
             command="/approve_result",
             entity=f"game:{game_id}",
             before=None,
-            after={"result": result},
+            after={"result": outcome.confirmed_result},
             result="ok",
             reason=None,
         )
-        await message.answer(f"Результат игры {game_id} подтвержден: {result}.")
-        for item in notification_service.flush():
-            await message.answer(item)
+        await message.answer(outcome.message)
+
+        bot = message.bot
+        if bot is not None:
+            schedule_hint = outcome.next_round_hint or "Время следующего тура пока не назначено."
+            notify_text = f"Арбитр подтвердил результат игры {outcome.game_id}: {outcome.confirmed_result}. {schedule_hint}"
+            for target in (outcome.white_telegram_id, outcome.black_telegram_id):
+                if isinstance(target, int):
+                    try:
+                        await bot.send_message(target, notify_text)
+                    except Exception:  # noqa: BLE001
+                        continue
 
     @router.message(Command("ticket_queue"))
     async def ticket_queue_handler(message: Message) -> None:
@@ -69,4 +77,3 @@ def build_arbitrator_router(context: RouterContext) -> Router:
         await message.answer("Текущая очередь тикетов:\n" + "\n".join(lines))
 
     return router
-

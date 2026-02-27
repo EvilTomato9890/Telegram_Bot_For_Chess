@@ -46,8 +46,10 @@ def test_conflicting_reports_require_resolution() -> None:
     out2 = result_service.submit_player_report(502, "black")
     assert out1.status == "pending"
     assert out2.status == "conflict"
-    messages = notification_service.flush()
-    assert any("Конфликт" in message for message in messages)
+    assert "1-0" in out2.message
+    assert "0-1" in out2.message
+    # No global broadcast notifications on conflict.
+    assert notification_service.flush() == []
 
 
 def test_matching_reports_finalize_game() -> None:
@@ -56,7 +58,7 @@ def test_matching_reports_finalize_game() -> None:
     out2 = result_service.submit_player_report(502, "draw")
     assert out1.status == "pending"
     assert out2.status == "agreed"
+    assert out2.confirmed_result == "0.5-0.5"
     game = services["game_repo"].get_by_id(game_id)
     assert game is not None
     assert game.result is not None
-

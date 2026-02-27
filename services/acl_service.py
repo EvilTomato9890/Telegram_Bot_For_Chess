@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from domain.dto import CommandSpec, HelpView
-from domain.models import Role
+from domain.models import PlayerStatus, Role
 from repositories import PlayerRepository, RoleGrantRepository
 
 
@@ -13,7 +13,7 @@ COMMAND_REGISTRY: tuple[CommandSpec, ...] = (
     CommandSpec("/help", frozenset({Role.PLAYER, Role.ARBITRATOR, Role.ADMIN}), "Список доступных команд"),
     CommandSpec("/start", frozenset({Role.PLAYER, Role.ARBITRATOR, Role.ADMIN}), "Стартовое меню"),
     CommandSpec("/rules", frozenset({Role.PLAYER, Role.ARBITRATOR, Role.ADMIN}), "Правила турнира"),
-    CommandSpec("/get_game_id", frozenset({Role.PLAYER}), "ID своей последней/текущей партии"),
+    CommandSpec("/get_game_id", frozenset({Role.PLAYER}), "ID последней/текущей партии"),
     CommandSpec("/my_next", frozenset({Role.PLAYER}), "Следующая партия"),
     CommandSpec("/schedule", frozenset({Role.PLAYER, Role.ARBITRATOR, Role.ADMIN}), "Расписание туров"),
     CommandSpec("/my_score", frozenset({Role.PLAYER}), "Мои очки и тай-брейки"),
@@ -25,11 +25,13 @@ COMMAND_REGISTRY: tuple[CommandSpec, ...] = (
     CommandSpec("/approve_result", frozenset({Role.ARBITRATOR, Role.ADMIN}), "Подтвердить результат игры"),
     CommandSpec("/ticket_queue", frozenset({Role.ARBITRATOR, Role.ADMIN}), "Очередь активных тикетов арбитра"),
     CommandSpec("/add_player", frozenset({Role.ADMIN}), "Добавить участника"),
+    CommandSpec("/delete_player", frozenset({Role.ADMIN}), "Удалить участника из списка"),
     CommandSpec("/disqualify", frozenset({Role.ADMIN}), "Дисквалифицировать игрока"),
     CommandSpec("/tables", frozenset({Role.ADMIN}), "Список столов"),
     CommandSpec("/add_table", frozenset({Role.ADMIN}), "Добавить стол"),
     CommandSpec("/remove_table", frozenset({Role.ADMIN}), "Удалить стол"),
     CommandSpec("/set_rules", frozenset({Role.ADMIN}), "Задать регламент"),
+    CommandSpec("/announce", frozenset({Role.ADMIN}), "Объявление всем участникам"),
     CommandSpec("/create_tournament", frozenset({Role.ADMIN}), "Создать черновик турнира"),
     CommandSpec("/open_registration", frozenset({Role.ADMIN}), "Открыть регистрацию"),
     CommandSpec("/set_round_number", frozenset({Role.ADMIN}), "Задать число туров"),
@@ -55,6 +57,9 @@ class AccessControlService:
     role_grants_repo: RoleGrantRepository
     player_repo: PlayerRepository
     _PUBLIC_COMMANDS: frozenset[str] = frozenset({"/start", "/help", "/register"})
+    _DQ_RESTRICTED_PLAYER_COMMANDS: frozenset[str] = frozenset(
+        {"/report", "/my_next", "/get_game_id", "/create_ticket", "/close_ticket", "/register"}
+    )
 
     def resolve_roles(self, telegram_id: int) -> set[Role]:
         """Resolve merged roles from config, runtime grants and player registrations."""
@@ -72,12 +77,15 @@ class AccessControlService:
     def can_execute(self, telegram_id: int, command: str) -> bool:
         """Check if user can run command by OR-role policy."""
 
+        roles = self.resolve_roles(telegram_id)
         if command in self._PUBLIC_COMMANDS:
-            return True
+            return not self._is_disqualified_player_restricted(telegram_id, roles, command)
         spec = self._find_spec(command)
         if spec is None:
             return False
-        return bool(self.resolve_roles(telegram_id).intersection(spec.roles))
+        if not spec.roles.intersection(roles):
+            return False
+        return not self._is_disqualified_player_restricted(telegram_id, roles, command)
 
     def require(self, telegram_id: int, command: str) -> None:
         """Raise PermissionError when command is not allowed."""
@@ -88,10 +96,7 @@ class AccessControlService:
     def help_for(self, telegram_id: int) -> HelpView:
         """Build help view of commands available for actor."""
 
-        roles = self.resolve_roles(telegram_id)
-        commands = tuple(
-            spec for spec in COMMAND_REGISTRY if spec.name in self._PUBLIC_COMMANDS or spec.roles.intersection(roles)
-        )
+        commands = tuple(spec for spec in COMMAND_REGISTRY if self.can_execute(telegram_id, spec.name))
         return HelpView(actor_id=telegram_id, commands=commands)
 
     def user_ids_with_role(self, role: Role) -> list[int]:
@@ -117,10 +122,17 @@ class AccessControlService:
         self.require(actor_id, "/add_player")
         self.role_grants_repo.append(target_id, role, "revoke")
 
+    def _is_disqualified_player_restricted(self, telegram_id: int, roles: set[Role], command: str) -> bool:
+        if command not in self._DQ_RESTRICTED_PLAYER_COMMANDS:
+            return False
+        if Role.ADMIN in roles or Role.ARBITRATOR in roles:
+            return False
+        player = self.player_repo.get_by_telegram_id(telegram_id)
+        return player is not None and player.status == PlayerStatus.DISQUALIFIED
+
     @staticmethod
     def _find_spec(command: str) -> CommandSpec | None:
         for spec in COMMAND_REGISTRY:
             if spec.name == command:
                 return spec
         return None
-

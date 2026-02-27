@@ -85,7 +85,7 @@ class TournamentService:
         tournament = self.ensure_tournament()
         if tournament.status != TournamentStatus.DRAFT:
             raise ValueError("Открыть регистрацию можно только из статуса draft.")
-        player_count = self._count_players()
+        player_count = self._count_active_players()
         max_capacity = len(self._table_repo.list_all()) * 2
         if max_capacity and player_count > max_capacity:
             raise ValueError("Игроков уже больше чем 2 * число столов.")
@@ -241,6 +241,7 @@ class TournamentService:
         tournament = self.ensure_tournament()
         tables = self._table_repo.list_all()
         active_players = self._count_active_players()
+        required_tables = active_players // 2 if active_players >= 2 else 0
         return {
             "status": tournament.status.value,
             "rounds_total": tournament.number_of_rounds,
@@ -248,7 +249,8 @@ class TournamentService:
             "prepared": tournament.prepared,
             "tables_count": len(tables),
             "players_active": active_players,
-            "enough_tables_for_next_round": len(tables) >= max(1, active_players // 2),
+            "players_disqualified": self._count_disqualified_players(),
+            "enough_tables_for_next_round": len(tables) >= required_tables,
         }
 
     @staticmethod
@@ -265,3 +267,5 @@ class TournamentService:
     def _count_active_players(self) -> int:
         return sum(1 for player in self._player_repo.list_all() if player.status == PlayerStatus.ACTIVE)
 
+    def _count_disqualified_players(self) -> int:
+        return sum(1 for player in self._player_repo.list_all() if player.status == PlayerStatus.DISQUALIFIED)

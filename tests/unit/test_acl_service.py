@@ -6,14 +6,10 @@ def test_acl_or_logic_for_multi_role_user() -> None:
     services = build_services(build_db_url("acl"))
     acl = services["acl_service"]
 
-    # admin from config
     assert acl.can_execute(9001, "/set_rules") is True
-    # arbitrator from config
     assert acl.can_execute(9002, "/approve_result") is True
     assert acl.can_execute(9002, "/ticket_queue") is True
-    # public registration command is available for anyone
     assert acl.can_execute(777, "/register") is True
-    # but non-public player commands require real player role
     assert acl.can_execute(777, "/my_score") is False
 
 
@@ -23,6 +19,8 @@ def test_acl_registry_contains_new_admin_commands_only() -> None:
 
     assert acl.can_execute(9001, "/prepare_tournament") is True
     assert acl.can_execute(9001, "/tournament_status") is True
+    assert acl.can_execute(9001, "/delete_player") is True
+    assert acl.can_execute(9001, "/announce") is True
     assert acl.can_execute(9001, "/prepare_turnament") is False
     assert acl.can_execute(9001, "/tournament_statuc") is False
 
@@ -51,4 +49,27 @@ def test_player_role_is_granted_after_registration() -> None:
     tournament.open_registration()
     registration.register(777, "u777", "User 777", 1200)
 
+    assert acl.can_execute(777, "/my_score") is True
+
+
+def test_disqualified_player_is_limited_to_read_only_commands() -> None:
+    services = build_services(build_db_url("acl_dq"))
+    acl = services["acl_service"]
+    registration = services["registration_service"]
+    tournament = services["tournament_service"]
+
+    tournament.create_tournament()
+    tournament.open_registration()
+    player = registration.register(777, "u777", "User 777", 1200)
+    assert acl.can_execute(777, "/report") is True
+
+    registration.disqualify(player.id or 0)
+
+    assert acl.can_execute(777, "/report") is False
+    assert acl.can_execute(777, "/my_next") is False
+    assert acl.can_execute(777, "/create_ticket") is False
+    assert acl.can_execute(777, "/register") is False
+    assert acl.can_execute(777, "/help") is True
+    assert acl.can_execute(777, "/rules") is True
+    assert acl.can_execute(777, "/schedule") is True
     assert acl.can_execute(777, "/my_score") is True

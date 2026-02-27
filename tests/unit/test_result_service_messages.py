@@ -45,6 +45,9 @@ def test_pending_and_agreed_messages_include_result() -> None:
 
     assert "1-0" in pending.message
     assert "1-0" in agreed.message
+    assert pending.confirmed_result == "1-0"
+    assert agreed.confirmed_result == "1-0"
+    assert agreed.next_round_hint is not None
     assert pending.game_id == game_id
     assert agreed.game_id == game_id
 
@@ -58,3 +61,4 @@ def test_conflict_message_contains_both_values() -> None:
 
     assert "1-0" in conflict.message
     assert "0-1" in conflict.message
+    assert conflict.confirmed_result == "0-1"

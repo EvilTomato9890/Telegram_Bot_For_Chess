@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import json
+import logging
+
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
-import json
-import logging
 
 from bot.context import RouterContext
 from domain.models import Role, TicketType, TournamentStatus
@@ -37,7 +38,6 @@ def build_common_router(context: RouterContext) -> Router:
     game_repo = context.game_repo
     round_repo = context.round_repo
     table_repo = context.table_repo
-    notification_service = context.notification_service
     default_top = context.config.standings_default_top
 
     @router.message(Command("start"))
@@ -52,6 +52,17 @@ def build_common_router(context: RouterContext) -> Router:
 
     @router.callback_query(F.data == "start:register")
     async def start_register_callback(callback: CallbackQuery, state: FSMContext) -> None:
+        if callback.from_user is None:
+            await callback.answer()
+            return
+        try:
+            registration_service.validate_self_registration_precheck(callback.from_user.id)
+        except ValueError as exc:
+            if callback.message is not None:
+                await callback.message.answer(f"Ошибка регистрации: {exc}")
+            await callback.answer()
+            return
+
         await state.clear()
         await state.set_state(RegistrationStates.waiting_rating)
         if callback.message is not None:
@@ -264,10 +275,61 @@ def build_common_router(context: RouterContext) -> Router:
             reason=None,
         )
         if callback.message is not None:
-            await callback.message.answer(f"Вы выбрали: {chosen.value}\nИгра {outcome.game_id}: {outcome.message}")
-            for notification in notification_service.flush():
-                await callback.message.answer(notification)
+            extra_hint = ""
+            if outcome.status == "agreed" and outcome.next_round_hint:
+                extra_hint = f"\n{outcome.next_round_hint}"
+            await callback.message.answer(
+                f"Вы выбрали: {chosen.value}\nИгра {outcome.game_id}: {outcome.message}{extra_hint}"
+            )
+            await _notify_report_peers(callback, outcome)
         await callback.answer()
+
+    async def _notify_report_peers(callback: CallbackQuery, outcome: object) -> None:
+        if callback.message is None:
+            return
+        bot = callback.message.bot
+        if bot is None:
+            return
+        actor_id = callback.from_user.id
+        if not hasattr(outcome, "status"):
+            return
+        status = getattr(outcome, "status")
+        if not isinstance(status, str):
+            return
+
+        if status == "pending":
+            return
+
+        white_telegram_id = getattr(outcome, "white_telegram_id", None)
+        black_telegram_id = getattr(outcome, "black_telegram_id", None)
+        confirmed_result = getattr(outcome, "confirmed_result", None)
+        next_round_hint = getattr(outcome, "next_round_hint", None)
+        game_id = getattr(outcome, "game_id", None)
+        message = getattr(outcome, "message", None)
+
+        if not isinstance(game_id, int) or not isinstance(message, str):
+            return
+
+        if status == "conflict":
+            text = f"Игра {game_id}: {message}"
+            for target in (white_telegram_id, black_telegram_id):
+                if isinstance(target, int) and target != actor_id:
+                    try:
+                        await bot.send_message(target, text)
+                    except Exception:  # noqa: BLE001
+                        continue
+            return
+
+        if status == "agreed":
+            result_text = confirmed_result if isinstance(confirmed_result, str) else "результат подтвержден"
+            schedule_hint = next_round_hint if isinstance(next_round_hint, str) else "Время следующего тура пока не назначено."
+            text = f"Игра {game_id}: подтвержден результат {result_text}. {schedule_hint}"
+            for target in (white_telegram_id, black_telegram_id):
+                if isinstance(target, int) and target != actor_id:
+                    try:
+                        await bot.send_message(target, text)
+                    except Exception:  # noqa: BLE001
+                        continue
 
     @router.message(Command("my_score"))
     async def my_score_handler(message: Message) -> None:

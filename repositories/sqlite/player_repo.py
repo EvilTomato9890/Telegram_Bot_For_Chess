@@ -109,6 +109,15 @@ class PlayerRepository:
         with self._database.transaction() as conn:
             return self._map_row(conn.execute("SELECT * FROM players WHERE telegram_id = ?", (telegram_id,)).fetchone())
 
+    def get_by_username(self, username: str, connection: sqlite3.Connection | None = None) -> Player | None:
+        normalized = username.strip().removeprefix("@")
+        if not normalized:
+            return None
+        if connection is not None:
+            return self._map_row(connection.execute("SELECT * FROM players WHERE username = ?", (normalized,)).fetchone())
+        with self._database.transaction() as conn:
+            return self._map_row(conn.execute("SELECT * FROM players WHERE username = ?", (normalized,)).fetchone())
+
     def list_all(self, connection: sqlite3.Connection | None = None) -> list[Player]:
         if connection is not None:
             rows = connection.execute("SELECT * FROM players ORDER BY id ASC").fetchall()
@@ -134,6 +143,14 @@ class PlayerRepository:
     def clear_all(self, connection: sqlite3.Connection) -> None:
         connection.execute("DELETE FROM players")
 
+    def delete_by_id(self, player_id: int, connection: sqlite3.Connection | None = None) -> bool:
+        if connection is not None:
+            cursor = connection.execute("DELETE FROM players WHERE id = ?", (player_id,))
+            return cursor.rowcount > 0
+        with self._database.transaction() as conn:
+            cursor = conn.execute("DELETE FROM players WHERE id = ?", (player_id,))
+            return cursor.rowcount > 0
+
     @staticmethod
     def _map_row(row: sqlite3.Row | None) -> Player | None:
         if row is None:
@@ -157,4 +174,3 @@ class PlayerRepository:
             seat_hint=row["seat_hint"],
             created_at=created_at,
         )
-

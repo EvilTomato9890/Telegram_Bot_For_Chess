@@ -22,6 +22,8 @@ def build_player_router(context: RouterContext) -> Router:
         if message.from_user is None:
             return
         acl.require(message.from_user.id, "/register")
+        registration_service.validate_self_registration_precheck(message.from_user.id)
+
         parts = (message.text or "").split(maxsplit=2)
         if len(parts) < 3:
             await message.answer("Формат: /register <рейтинг> <имя и фамилия>")
@@ -53,4 +55,3 @@ def build_player_router(context: RouterContext) -> Router:
         await message.answer(f"Регистрация успешна: #{player.id} {player.full_name}, рейтинг {player.rating}.")
 
     return router
-

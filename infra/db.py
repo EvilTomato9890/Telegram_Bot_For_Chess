@@ -6,6 +6,8 @@ focused on SQL and mapping only.
 
 from __future__ import annotations
 
+from domain.exceptions import DomainError
+
 from contextlib import contextmanager
 from pathlib import Path
 import sqlite3
@@ -17,7 +19,7 @@ class Database:
 
     def __init__(self, db_url: str) -> None:
         if not db_url.startswith("sqlite:///"):
-            raise ValueError("Supported DB_URL format: sqlite:///path/to/file.db")
+            raise DomainError("Supported DB_URL format: sqlite:///path/to/file.db")
         self._db_path = Path(db_url.removeprefix("sqlite:///"))
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -48,4 +50,6 @@ class Database:
             raise
         finally:
             connection.close()
+
+
 

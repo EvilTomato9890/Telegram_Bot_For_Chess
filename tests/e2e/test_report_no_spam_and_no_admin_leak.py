@@ -120,4 +120,5 @@ def test_report_callback_does_not_spam_or_leak_admin_messages() -> None:
     assert len(bot.sent) == 1
     target_id, text = bot.sent[0]
     assert target_id == 8001
-    assert "Игра" in text
+    assert "1" in text and ("0-1" in text or "1-0" in text)
+

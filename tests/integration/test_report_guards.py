@@ -1,6 +1,6 @@
 import pytest
 
-from domain.models import TournamentStatus
+from domain.models import Table, TournamentStatus
 from tests.utils import build_db_url, build_services
 
 
@@ -10,8 +10,10 @@ def test_report_is_blocked_without_active_game() -> None:
     registration_service = services["registration_service"]
     result_service = services["result_service"]
     tournament_repo = services["tournament_repo"]
+    table_repo = services["table_repo"]
 
     tournament_service.create_tournament()
+    table_repo.add(Table(id=None, number=1, location="A"))
     tournament_service.open_registration()
     registration_service.register(5001, "u1", "Player One", 1200)
     tournament = tournament_repo.get()
@@ -27,4 +29,3 @@ def test_report_is_blocked_without_active_game() -> None:
 
     with pytest.raises(ValueError, match="Нет активной партии для /report."):
         result_service.submit_player_report(5001, "white")
-

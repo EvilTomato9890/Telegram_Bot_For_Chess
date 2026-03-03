@@ -3,10 +3,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 
 from domain.dto import CommandSpec, HelpView
 from domain.models import PlayerStatus, Role
 from repositories import PlayerRepository, RoleGrantRepository
+
+
+class PlayerAccessState(StrEnum):
+    """Computed player access state used by ACL."""
+
+    UNREGISTERED = "unregistered"
+    PLAYER_ACTIVE = "player_active"
+    PLAYER_DISQUALIFIED = "player_disqualified"
 
 
 COMMAND_REGISTRY: tuple[CommandSpec, ...] = (
@@ -56,10 +65,8 @@ class AccessControlService:
     arbitrs_ids: set[int]
     role_grants_repo: RoleGrantRepository
     player_repo: PlayerRepository
-    _PUBLIC_COMMANDS: frozenset[str] = frozenset({"/start", "/help", "/register"})
-    _DQ_RESTRICTED_PLAYER_COMMANDS: frozenset[str] = frozenset(
-        {"/report", "/my_next", "/get_game_id", "/create_ticket", "/close_ticket", "/register"}
-    )
+    _GUEST_ALLOWED: frozenset[str] = frozenset({"/start", "/help", "/register"})
+    _DISQUALIFIED_ALLOWED: frozenset[str] = frozenset({"/help", "/rules", "/schedule", "/my_score", "/standings"})
 
     def resolve_roles(self, telegram_id: int) -> set[Role]:
         """Resolve merged roles from config, runtime grants and player registrations."""
@@ -74,24 +81,42 @@ class AccessControlService:
             roles.add(Role.PLAYER)
         return roles
 
+    def resolve_player_access_state(self, telegram_id: int) -> PlayerAccessState:
+        """Resolve computed access-state for player profile."""
+
+        player = self.player_repo.get_by_telegram_id(telegram_id)
+        if player is None:
+            return PlayerAccessState.UNREGISTERED
+        if player.status == PlayerStatus.DISQUALIFIED:
+            return PlayerAccessState.PLAYER_DISQUALIFIED
+        return PlayerAccessState.PLAYER_ACTIVE
+
     def can_execute(self, telegram_id: int, command: str) -> bool:
         """Check if user can run command by OR-role policy."""
 
-        roles = self.resolve_roles(telegram_id)
-        if command in self._PUBLIC_COMMANDS:
-            return not self._is_disqualified_player_restricted(telegram_id, roles, command)
         spec = self._find_spec(command)
         if spec is None:
             return False
-        if not spec.roles.intersection(roles):
-            return False
-        return not self._is_disqualified_player_restricted(telegram_id, roles, command)
+
+        roles = self.resolve_roles(telegram_id)
+        player_state = self.resolve_player_access_state(telegram_id)
+        is_staff = Role.ADMIN in roles or Role.ARBITRATOR in roles
+
+        if player_state == PlayerAccessState.UNREGISTERED and not is_staff:
+            return command in self._GUEST_ALLOWED
+        if player_state == PlayerAccessState.PLAYER_DISQUALIFIED and not is_staff:
+            return command in self._DISQUALIFIED_ALLOWED
+
+        if command in self._GUEST_ALLOWED:
+            return True
+        return bool(spec.roles.intersection(roles))
 
     def require(self, telegram_id: int, command: str) -> None:
         """Raise PermissionError when command is not allowed."""
 
-        if not self.can_execute(telegram_id, command):
-            raise PermissionError("Недостаточно прав для выполнения команды.")
+        if self.can_execute(telegram_id, command):
+            return
+        raise PermissionError(self._permission_denied_message(telegram_id, command))
 
     def help_for(self, telegram_id: int) -> HelpView:
         """Build help view of commands available for actor."""
@@ -122,13 +147,18 @@ class AccessControlService:
         self.require(actor_id, "/add_player")
         self.role_grants_repo.append(target_id, role, "revoke")
 
-    def _is_disqualified_player_restricted(self, telegram_id: int, roles: set[Role], command: str) -> bool:
-        if command not in self._DQ_RESTRICTED_PLAYER_COMMANDS:
-            return False
-        if Role.ADMIN in roles or Role.ARBITRATOR in roles:
-            return False
-        player = self.player_repo.get_by_telegram_id(telegram_id)
-        return player is not None and player.status == PlayerStatus.DISQUALIFIED
+    def _permission_denied_message(self, telegram_id: int, command: str) -> str:
+        player_state = self.resolve_player_access_state(telegram_id)
+        roles = self.resolve_roles(telegram_id)
+        is_staff = Role.ADMIN in roles or Role.ARBITRATOR in roles
+
+        if command == "/register" and player_state != PlayerAccessState.UNREGISTERED:
+            return "Вы уже зарегистрированы."
+        if player_state == PlayerAccessState.UNREGISTERED and not is_staff:
+            return "Команда недоступна до регистрации. Используйте /register."
+        if player_state == PlayerAccessState.PLAYER_DISQUALIFIED and not is_staff:
+            return "Команда недоступна для дисквалифицированного участника."
+        return "Недостаточно прав для выполнения команды."
 
     @staticmethod
     def _find_spec(command: str) -> CommandSpec | None:

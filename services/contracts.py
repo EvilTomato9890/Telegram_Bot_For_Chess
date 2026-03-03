@@ -4,6 +4,7 @@ New code should import from dedicated modules in `services/`.
 """
 
 from .acl_service import AccessControlService
+from .notification_gateway import NotificationGateway
 from .notification_service import NotificationService
 from .pairing_service import PairingService
 from .registration_service import RegistrationService
@@ -15,6 +16,7 @@ from .undo_service import UndoService
 
 __all__ = [
     "AccessControlService",
+    "NotificationGateway",
     "NotificationService",
     "PairingService",
     "RegistrationService",
@@ -24,4 +26,3 @@ __all__ = [
     "TournamentService",
     "UndoService",
 ]
-

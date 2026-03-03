@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from domain.exceptions import DomainError
+
 import argparse
 from pathlib import Path
 import sqlite3
@@ -60,7 +62,7 @@ def _incompatible_schema_error(db_path: Path) -> RuntimeError:
 
 def init_db(db_url: str, *, rebuild_on_incompatible: bool = False) -> Path:
     if not db_url.startswith("sqlite:///"):
-        raise ValueError("Only sqlite:/// URLs are supported by the bootstrap initializer")
+        raise DomainError("Only sqlite:/// URLs are supported by the bootstrap initializer")
 
     db_path = Path(db_url.removeprefix("sqlite:///"))
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -97,3 +99,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+

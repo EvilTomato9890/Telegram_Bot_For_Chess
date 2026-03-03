@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, datetime
 
+from domain.exceptions import DomainError
 from domain.models import Role, Ticket, TicketStatus, TicketType
 from infra.logging import AuditLogger
 from repositories import TicketRepository
@@ -36,7 +37,7 @@ class TicketService:
 
         normalized_description = description.strip()
         if not normalized_description:
-            raise ValueError("Описание тикета не может быть пустым.")
+            raise DomainError("Описание тикета не может быть пустым.")
 
         target_role = Role.ARBITRATOR if ticket_type == TicketType.ARBITR else Role.ADMIN
         assignee = self._select_assignee(target_role)
@@ -73,18 +74,18 @@ class TicketService:
         if ticket_id is None:
             own = self._ticket_repo.list_open_by_author(actor_id)
             if not own:
-                raise ValueError("У вас нет открытых тикетов.")
+                raise DomainError("У вас нет открытых тикетов.")
             ticket = own[0]
         else:
             explicit_ticket = self._ticket_repo.get_by_id(ticket_id)
             if explicit_ticket is None:
-                raise ValueError("Тикет не найден.")
+                raise DomainError("Тикет не найден.")
             if not self._can_close_ticket(actor_id=actor_id, actor_roles=actor_roles, ticket=explicit_ticket):
                 raise PermissionError("Недостаточно прав для закрытия этого тикета.")
             ticket = explicit_ticket
 
         if ticket.status == TicketStatus.CLOSED:
-            raise ValueError("Тикет уже закрыт.")
+            raise DomainError("Тикет уже закрыт.")
 
         closed = replace(
             ticket,

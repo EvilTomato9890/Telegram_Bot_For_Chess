@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from domain.exceptions import DomainError
+
 from datetime import UTC, datetime
 import sqlite3
 
@@ -41,19 +43,19 @@ class GameRepository:
             row = connection.execute("SELECT * FROM games WHERE id = ?", (cursor.lastrowid,)).fetchone()
             mapped = self._map_row(row)
             if mapped is None:
-                raise ValueError("failed to insert game")
+                raise DomainError("failed to insert game")
             return mapped
         with self._database.transaction() as conn:
             cursor = conn.execute(sql, params)
             row = conn.execute("SELECT * FROM games WHERE id = ?", (cursor.lastrowid,)).fetchone()
             mapped = self._map_row(row)
             if mapped is None:
-                raise ValueError("failed to insert game")
+                raise DomainError("failed to insert game")
             return mapped
 
     def update(self, game: Game, connection: sqlite3.Connection | None = None) -> Game:
         if game.id is None:
-            raise ValueError("game id is required")
+            raise DomainError("game id is required")
         sql = """
             UPDATE games
             SET round_id = ?, board_number = ?, white_player_id = ?, black_player_id = ?, result = ?,
@@ -76,14 +78,14 @@ class GameRepository:
             row = connection.execute("SELECT * FROM games WHERE id = ?", (game.id,)).fetchone()
             mapped = self._map_row(row)
             if mapped is None:
-                raise ValueError("game not found")
+                raise DomainError("game not found")
             return mapped
         with self._database.transaction() as conn:
             conn.execute(sql, params)
             row = conn.execute("SELECT * FROM games WHERE id = ?", (game.id,)).fetchone()
             mapped = self._map_row(row)
             if mapped is None:
-                raise ValueError("game not found")
+                raise DomainError("game not found")
             return mapped
 
     def get_by_id(self, game_id: int, connection: sqlite3.Connection | None = None) -> Game | None:
@@ -149,4 +151,6 @@ class GameRepository:
             created_at=created_at,
             updated_at=updated_at,
         )
+
+
 

@@ -1,6 +1,6 @@
 import pytest
 
-from domain.models import TournamentStatus
+from domain.models import Table, TournamentStatus
 from tests.utils import build_db_url, build_services
 
 
@@ -8,8 +8,10 @@ def test_delete_player_removes_active_and_disqualified_before_start() -> None:
     services = build_services(build_db_url("delete_player_ok"))
     registration = services["registration_service"]
     tournament_service = services["tournament_service"]
+    table_repo = services["table_repo"]
 
     tournament_service.create_tournament()
+    table_repo.add(Table(id=None, number=1, location="A"))
     tournament_service.open_registration()
     p1 = registration.register(4001, "u1", "A", 1500)
     p2 = registration.register(4002, "u2", "B", 1400)
@@ -29,8 +31,10 @@ def test_delete_player_blocked_after_start() -> None:
     registration = services["registration_service"]
     tournament_service = services["tournament_service"]
     tournament_repo = services["tournament_repo"]
+    table_repo = services["table_repo"]
 
     tournament = tournament_service.create_tournament()
+    table_repo.add(Table(id=None, number=1, location="A"))
     tournament_service.open_registration()
     player = registration.register(4101, "u1", "A", 1500)
     tournament_repo.update_status(

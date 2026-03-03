@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from domain.exceptions import DomainError
+
 from datetime import UTC, datetime
 import sqlite3
 
@@ -40,14 +42,14 @@ class GameReportRepository:
             row = connection.execute(fetch_sql, (game_id, reporter_player_id)).fetchone()
             mapped = self._map_row(row)
             if mapped is None:
-                raise ValueError("failed to upsert report")
+                raise DomainError("failed to upsert report")
             return mapped
         with self._database.transaction() as conn:
             conn.execute(sql, params)
             row = conn.execute(fetch_sql, (game_id, reporter_player_id)).fetchone()
             mapped = self._map_row(row)
             if mapped is None:
-                raise ValueError("failed to upsert report")
+                raise DomainError("failed to upsert report")
             return mapped
 
     def list_by_game(self, game_id: int, connection: sqlite3.Connection | None = None) -> list[GameReport]:
@@ -81,4 +83,6 @@ class GameReportRepository:
             reported_result=GameResult(row["reported_result"]),
             created_at=created_at,
         )
+
+
 

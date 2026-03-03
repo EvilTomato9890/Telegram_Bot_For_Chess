@@ -8,6 +8,7 @@ from typing import Any, ParamSpec, TypeVar, cast
 
 from aiogram.types import Message
 
+from domain.exceptions import DomainError
 from services import AccessControlService
 
 P = ParamSpec("P")
@@ -21,7 +22,7 @@ def require_acl(command_name: str) -> Callable[[Callable[P, Awaitable[R]]], Call
         @wraps(handler)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             if not args:
-                raise ValueError("missing handler arguments")
+                raise DomainError("missing handler arguments")
             message: Message | None = None
             for value in args:
                 if isinstance(value, Message):
@@ -32,11 +33,11 @@ def require_acl(command_name: str) -> Callable[[Callable[P, Awaitable[R]]], Call
                 if isinstance(maybe_message, Message):
                     message = maybe_message
             if message is None or message.from_user is None:
-                raise ValueError("cannot resolve actor from message")
+                raise DomainError("cannot resolve actor from message")
             context = cast(dict[str, Any], kwargs.get("context", {}))
             acl = context.get("acl_service")
             if not isinstance(acl, AccessControlService):
-                raise ValueError("acl_service is missing in handler context")
+                raise DomainError("acl_service is missing in handler context")
             if not acl.can_execute(message.from_user.id, command_name):
                 await message.answer("Недостаточно прав для этой команды.")
                 raise PermissionError("acl denied")
@@ -45,4 +46,3 @@ def require_acl(command_name: str) -> Callable[[Callable[P, Awaitable[R]]], Call
         return wrapper
 
     return decorator
-

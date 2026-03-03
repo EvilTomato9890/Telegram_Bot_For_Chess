@@ -7,6 +7,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from bot.context import RouterContext
+from domain.exceptions import DomainError
 
 
 def build_player_router(context: RouterContext) -> Router:
@@ -31,10 +32,10 @@ def build_player_router(context: RouterContext) -> Router:
         try:
             rating = int(parts[1])
         except ValueError as exc:
-            raise ValueError("Рейтинг должен быть целым числом.") from exc
+            raise DomainError("Рейтинг должен быть целым числом.") from exc
         full_name = parts[2].strip()
         if not full_name:
-            raise ValueError("Имя и фамилия не могут быть пустыми.")
+            raise DomainError("Имя и фамилия не могут быть пустыми.")
 
         player = registration_service.register(
             telegram_id=message.from_user.id,

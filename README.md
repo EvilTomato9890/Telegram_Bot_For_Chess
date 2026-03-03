@@ -100,7 +100,7 @@ python main.py
 
 ### ADMIN
 - Все команды арбитра
-- `/add_player <telegram_id|@username> <rating> <name>`
+- `/add_player <telegram_id|@username> <rating> <name>` (`@username` работает, если боту доступен `getChat` для пользователя)
 - `/delete_player <player_id>`
 - `/disqualify <player_id>`
 - `/tables`

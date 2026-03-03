@@ -8,6 +8,7 @@ from infra import AppConfig, AuditLogger
 from repositories import GameRepository, PlayerRepository, RoundRepository, TableRepository
 from services import (
     AccessControlService,
+    NotificationGateway,
     NotificationService,
     PairingService,
     RegistrationService,
@@ -38,4 +39,4 @@ class RouterContext:
     round_repo: RoundRepository
     game_repo: GameRepository
     table_repo: TableRepository
-
+    notification_gateway: NotificationGateway | None = None

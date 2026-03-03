@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from domain.exceptions import DomainError
+
 from datetime import UTC, datetime
 import sqlite3
 
@@ -38,19 +40,19 @@ class TicketRepository:
             row = connection.execute("SELECT * FROM tickets WHERE id = ?", (cursor.lastrowid,)).fetchone()
             mapped = self._map_row(row)
             if mapped is None:
-                raise ValueError("failed to insert ticket")
+                raise DomainError("failed to insert ticket")
             return mapped
         with self._database.transaction() as conn:
             cursor = conn.execute(sql, params)
             row = conn.execute("SELECT * FROM tickets WHERE id = ?", (cursor.lastrowid,)).fetchone()
             mapped = self._map_row(row)
             if mapped is None:
-                raise ValueError("failed to insert ticket")
+                raise DomainError("failed to insert ticket")
             return mapped
 
     def update(self, ticket: Ticket, connection: sqlite3.Connection | None = None) -> Ticket:
         if ticket.id is None:
-            raise ValueError("ticket id is required")
+            raise DomainError("ticket id is required")
         sql = """
             UPDATE tickets
             SET type = ?, author_telegram_id = ?, status = ?, assignee_telegram_id = ?, game_id = ?,
@@ -74,14 +76,14 @@ class TicketRepository:
             row = connection.execute("SELECT * FROM tickets WHERE id = ?", (ticket.id,)).fetchone()
             mapped = self._map_row(row)
             if mapped is None:
-                raise ValueError("ticket not found")
+                raise DomainError("ticket not found")
             return mapped
         with self._database.transaction() as conn:
             conn.execute(sql, params)
             row = conn.execute("SELECT * FROM tickets WHERE id = ?", (ticket.id,)).fetchone()
             mapped = self._map_row(row)
             if mapped is None:
-                raise ValueError("ticket not found")
+                raise DomainError("ticket not found")
             return mapped
 
     def get_by_id(self, ticket_id: int, connection: sqlite3.Connection | None = None) -> Ticket | None:
@@ -186,3 +188,5 @@ class TicketRepository:
             closed_at=parse_iso(row["closed_at"]),
             closed_by_telegram_id=row["closed_by_telegram_id"],
         )
+
+

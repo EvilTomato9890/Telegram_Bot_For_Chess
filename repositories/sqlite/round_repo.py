@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from domain.exceptions import DomainError
+
 from datetime import UTC, datetime
 import sqlite3
 
@@ -35,19 +37,19 @@ class RoundRepository:
             row = connection.execute("SELECT * FROM rounds WHERE id = ?", (cursor.lastrowid,)).fetchone()
             mapped = self._map_row(row)
             if mapped is None:
-                raise ValueError("failed to insert round")
+                raise DomainError("failed to insert round")
             return mapped
         with self._database.transaction() as conn:
             cursor = conn.execute(sql, params)
             row = conn.execute("SELECT * FROM rounds WHERE id = ?", (cursor.lastrowid,)).fetchone()
             mapped = self._map_row(row)
             if mapped is None:
-                raise ValueError("failed to insert round")
+                raise DomainError("failed to insert round")
             return mapped
 
     def update(self, round_: Round, connection: sqlite3.Connection | None = None) -> Round:
         if round_.id is None:
-            raise ValueError("round id is required")
+            raise DomainError("round id is required")
         sql = """
             UPDATE rounds
             SET number = ?, status = ?, starts_at = ?, window_end_at = ?, generated_at = ?, closed_at = ?
@@ -67,14 +69,14 @@ class RoundRepository:
             row = connection.execute("SELECT * FROM rounds WHERE id = ?", (round_.id,)).fetchone()
             mapped = self._map_row(row)
             if mapped is None:
-                raise ValueError("round not found")
+                raise DomainError("round not found")
             return mapped
         with self._database.transaction() as conn:
             conn.execute(sql, params)
             row = conn.execute("SELECT * FROM rounds WHERE id = ?", (round_.id,)).fetchone()
             mapped = self._map_row(row)
             if mapped is None:
-                raise ValueError("round not found")
+                raise DomainError("round not found")
             return mapped
 
     def get_by_id(self, round_id: int, connection: sqlite3.Connection | None = None) -> Round | None:
@@ -130,4 +132,6 @@ class RoundRepository:
             generated_at=generated_at,
             closed_at=parse_iso(row["closed_at"]),
         )
+
+
 

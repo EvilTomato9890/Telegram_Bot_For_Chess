@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from domain.exceptions import DomainError
+
 import sqlite3
 
 from domain.models import Table
@@ -18,18 +20,24 @@ class TableRepository:
         sql = "INSERT INTO tables(number, location, place_hint) VALUES (?, ?, ?)"
         params = (table.number, table.location, table.place_hint)
         if connection is not None:
-            cursor = connection.execute(sql, params)
+            try:
+                cursor = connection.execute(sql, params)
+            except sqlite3.IntegrityError as exc:
+                raise DomainError(f"Стол с номером {table.number} уже существует.") from exc
             row = connection.execute("SELECT * FROM tables WHERE id = ?", (cursor.lastrowid,)).fetchone()
             mapped = self._map_row(row)
             if mapped is None:
-                raise ValueError("failed to insert table")
+                raise DomainError("Не удалось добавить стол.")
             return mapped
         with self._database.transaction() as conn:
-            cursor = conn.execute(sql, params)
+            try:
+                cursor = conn.execute(sql, params)
+            except sqlite3.IntegrityError as exc:
+                raise DomainError(f"Стол с номером {table.number} уже существует.") from exc
             row = conn.execute("SELECT * FROM tables WHERE id = ?", (cursor.lastrowid,)).fetchone()
             mapped = self._map_row(row)
             if mapped is None:
-                raise ValueError("failed to insert table")
+                raise DomainError("Не удалось добавить стол.")
             return mapped
 
     def remove_by_number(self, number: int, connection: sqlite3.Connection | None = None) -> bool:
@@ -67,4 +75,6 @@ class TableRepository:
             location=row["location"],
             place_hint=row["place_hint"],
         )
+
+
 

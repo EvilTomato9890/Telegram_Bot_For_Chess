@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import json
-import logging
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
 from bot.context import RouterContext
+from domain.exceptions import DomainError
 from domain.models import Role, TicketType, TournamentStatus
 from keyboards import player_menu_keyboard, report_keyboard, start_keyboard
 
@@ -34,11 +34,23 @@ def build_common_router(context: RouterContext) -> Router:
     result_service = context.result_service
     ticket_service = context.ticket_service
     audit_logger = context.audit_logger
+    notification_gateway = context.notification_gateway
     player_repo = context.player_repo
     game_repo = context.game_repo
     round_repo = context.round_repo
     table_repo = context.table_repo
     default_top = context.config.standings_default_top
+
+    async def notify_user(bot: Bot | None, telegram_id: int, text: str) -> bool:
+        if notification_gateway is not None:
+            return await notification_gateway.send_to_user(bot, telegram_id, text)
+        if bot is None:
+            return False
+        try:
+            await bot.send_message(telegram_id, text)
+            return True
+        except Exception:  # noqa: BLE001
+            return False
 
     @router.message(Command("start"))
     async def start_handler(message: Message) -> None:
@@ -57,7 +69,8 @@ def build_common_router(context: RouterContext) -> Router:
             return
         try:
             registration_service.validate_self_registration_precheck(callback.from_user.id)
-        except ValueError as exc:
+        except DomainError as exc:
+            await state.clear()
             if callback.message is not None:
                 await callback.message.answer(f"Ошибка регистрации: {exc}")
             await callback.answer()
@@ -106,7 +119,7 @@ def build_common_router(context: RouterContext) -> Router:
                 full_name=full_name,
                 rating=raw_rating,
             )
-        except ValueError as exc:
+        except DomainError as exc:
             await message.answer(f"Ошибка регистрации: {exc}")
             return
 
@@ -155,12 +168,12 @@ def build_common_router(context: RouterContext) -> Router:
         acl.require(message.from_user.id, "/standings")
         tournament = tournament_service.ensure_tournament()
         if tournament.status not in {TournamentStatus.ONGOING, TournamentStatus.FINISHED}:
-            raise ValueError("Таблица лидеров будет доступна после старта турнира.")
+            raise DomainError("Таблица лидеров будет доступна после старта турнира.")
         parts = (message.text or "").split()
         try:
             top_n = default_top if len(parts) < 2 else int(parts[1])
         except ValueError as exc:
-            raise ValueError("Формат: /standings [top_n]") from exc
+            raise DomainError("Формат: /standings [top_n]") from exc
         rows = scoring_service.standings(top_n)
         player_position = None
         for row in scoring_service.recalculate():
@@ -205,10 +218,10 @@ def build_common_router(context: RouterContext) -> Router:
             try:
                 ticket_id = int(parts[1])
             except ValueError as exc:
-                raise ValueError("Формат: /close_ticket <ticket_id>") from exc
+                raise DomainError("Формат: /close_ticket <ticket_id>") from exc
         elif Role.ARBITRATOR in roles or Role.ADMIN in roles:
             if Role.PLAYER not in roles:
-                raise ValueError("Для арбитра/админа используйте /close_ticket <ticket_id>.")
+                raise DomainError("Для арбитра/админа используйте /close_ticket <ticket_id>.")
         closed = ticket_service.close_ticket(actor_id=message.from_user.id, ticket_id=ticket_id)
         await message.answer(f"Тикет #{closed.id} закрыт.")
 
@@ -219,11 +232,11 @@ def build_common_router(context: RouterContext) -> Router:
         acl.require(message.from_user.id, "/create_ticket")
         parts = (message.text or "").split(maxsplit=2)
         if len(parts) < 2:
-            raise ValueError("Формат: /create_ticket <arbitr|organizer> <описание>")
+            raise DomainError("Формат: /create_ticket <arbitr|organizer> <описание>")
         try:
             ticket_type = TicketType(parts[1].strip().lower())
         except ValueError as exc:
-            raise ValueError("Тип тикета должен быть arbitr или organizer.") from exc
+            raise DomainError("Тип тикета должен быть arbitr или organizer.") from exc
         description = parts[2] if len(parts) > 2 else "Без описания"
         ticket = ticket_service.create_ticket(
             actor_id=message.from_user.id,
@@ -232,19 +245,18 @@ def build_common_router(context: RouterContext) -> Router:
         )
         assignee_text = str(ticket.assignee_telegram_id) if ticket.assignee_telegram_id is not None else "не назначен"
         delivery_note = ""
-        if ticket.assignee_telegram_id is not None and message.bot is not None:
-            try:
-                await message.bot.send_message(
-                    ticket.assignee_telegram_id,
-                    (
-                        f"Новый тикет #{ticket.id}\n"
-                        f"Тип: {ticket.ticket_type.value}\n"
-                        f"Автор: {ticket.author_telegram_id}\n"
-                        f"Описание: {ticket.description}"
-                    ),
-                )
-            except Exception as exc:  # noqa: BLE001
-                logging.getLogger(__name__).warning("Failed to notify assignee for ticket %s: %s", ticket.id, exc)
+        if ticket.assignee_telegram_id is not None:
+            delivered = await notify_user(
+                message.bot,
+                ticket.assignee_telegram_id,
+                (
+                    f"Новый тикет #{ticket.id}\n"
+                    f"Тип: {ticket.ticket_type.value}\n"
+                    f"Автор: {ticket.author_telegram_id}\n"
+                    f"Описание: {ticket.description}"
+                ),
+            )
+            if not delivered:
                 delivery_note = " Уведомление назначенному не доставлено."
         await message.answer(f"Тикет #{ticket.id} создан. Исполнитель: {assignee_text}.{delivery_note}")
 
@@ -288,8 +300,6 @@ def build_common_router(context: RouterContext) -> Router:
         if callback.message is None:
             return
         bot = callback.message.bot
-        if bot is None:
-            return
         actor_id = callback.from_user.id
         if not hasattr(outcome, "status"):
             return
@@ -314,10 +324,7 @@ def build_common_router(context: RouterContext) -> Router:
             text = f"Игра {game_id}: {message}"
             for target in (white_telegram_id, black_telegram_id):
                 if isinstance(target, int) and target != actor_id:
-                    try:
-                        await bot.send_message(target, text)
-                    except Exception:  # noqa: BLE001
-                        continue
+                    await notify_user(bot, target, text)
             return
 
         if status == "agreed":
@@ -326,10 +333,7 @@ def build_common_router(context: RouterContext) -> Router:
             text = f"Игра {game_id}: подтвержден результат {result_text}. {schedule_hint}"
             for target in (white_telegram_id, black_telegram_id):
                 if isinstance(target, int) and target != actor_id:
-                    try:
-                        await bot.send_message(target, text)
-                    except Exception:  # noqa: BLE001
-                        continue
+                    await notify_user(bot, target, text)
 
     @router.message(Command("my_score"))
     async def my_score_handler(message: Message) -> None:
@@ -441,3 +445,6 @@ def build_common_router(context: RouterContext) -> Router:
         return None
 
     return router
+
+
+

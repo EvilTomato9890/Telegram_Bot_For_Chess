@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from domain.exceptions import DomainError
+
 from dataclasses import replace
 from datetime import UTC, datetime
 import sqlite3
@@ -60,14 +62,14 @@ class TournamentRepository:
             row = connection.execute("SELECT * FROM tournaments WHERE id = 1").fetchone()
             mapped = self._map_row(row)
             if mapped is None:
-                raise ValueError("failed to upsert tournament")
+                raise DomainError("failed to upsert tournament")
             return mapped
         with self._database.transaction() as conn:
             conn.execute(sql, params)
             row = conn.execute("SELECT * FROM tournaments WHERE id = 1").fetchone()
             mapped = self._map_row(row)
             if mapped is None:
-                raise ValueError("failed to upsert tournament")
+                raise DomainError("failed to upsert tournament")
             return mapped
 
     def ensure_exists(self, *, default_rules: str) -> Tournament:
@@ -96,7 +98,7 @@ class TournamentRepository:
         created = parse_iso(row["created_at"])
         updated = parse_iso(row["updated_at"])
         if created is None or updated is None:
-            raise ValueError("corrupt tournament timestamps")
+            raise DomainError("corrupt tournament timestamps")
         return Tournament(
             id=row["id"],
             status=TournamentStatus(row["status"]),
@@ -122,7 +124,7 @@ class TournamentRepository:
     ) -> Tournament:
         tournament = self.get(connection=connection)
         if tournament is None:
-            raise ValueError("tournament is not initialized")
+            raise DomainError("tournament is not initialized")
         updated = replace(
             tournament,
             status=status,
@@ -133,3 +135,5 @@ class TournamentRepository:
             pending_pairing_payload=pending_pairing_payload,
         )
         return self.upsert(updated, connection=connection)
+
+

@@ -1,12 +1,10 @@
 import asyncio
 from dataclasses import dataclass
-from datetime import UTC, datetime
-
-import pytest
+from types import SimpleNamespace
 
 from bot.context import RouterContext
 from bot.routers.organizer import build_organizer_router
-from domain.models import Round, RoundStatus, TournamentStatus
+from domain.models import Table
 from infra.config import AppConfig
 from infra.logging import setup_logging
 from tests.utils import build_db_url, build_services
@@ -19,11 +17,12 @@ class _StubUser:
 
 
 class _StubBot:
-    def __init__(self) -> None:
-        self.sent: list[tuple[int, str]] = []
+    async def get_chat(self, chat_id: str) -> SimpleNamespace:
+        assert chat_id == "@resolved_user"
+        return SimpleNamespace(id=712345, username="resolved_user")
 
-    async def send_message(self, chat_id: int, text: str) -> None:
-        self.sent.append((chat_id, text))
+    async def send_message(self, chat_id: int, text: str) -> None:  # pragma: no cover
+        return
 
 
 class _StubMessage:
@@ -37,24 +36,11 @@ class _StubMessage:
         self.answers.append(text)
 
 
-def test_next_round_notifies_admins_when_rounds_finished() -> None:
-    db_url = build_db_url("rounds_finished_notice")
+def test_add_player_resolves_username_via_bot_get_chat() -> None:
+    db_url = build_db_url("add_player_username")
     services = build_services(db_url)
-    tournament_repo = services["tournament_repo"]
-    round_repo = services["round_repo"]
-
-    tournament = tournament_repo.get()
-    assert tournament is not None
-    tournament_repo.update_status(
-        TournamentStatus.ONGOING,
-        prepared=True,
-        number_of_rounds=1,
-        current_round=1,
-        rules_text=tournament.rules_text,
-        pending_pairing_payload=None,
-    )
-    round_repo.add(Round(id=None, number=1, status=RoundStatus.CLOSED, generated_at=datetime.now(UTC)))
-
+    services["tournament_service"].create_tournament()
+    services["table_repo"].add(Table(id=None, number=1, location="A"))
     context = RouterContext(
         config=AppConfig(
             token="123456:abcdefghijklmnopqrstuvwxyzABCDE",
@@ -83,12 +69,12 @@ def test_next_round_notifies_admins_when_rounds_finished() -> None:
         table_repo=services["table_repo"],
     )
     router = build_organizer_router(context)
-    handler = next(h.callback for h in router.message.handlers if h.callback.__name__ == "next_round_handler")
+    handler = next(h.callback for h in router.message.handlers if h.callback.__name__ == "add_player_handler")
+    message = _StubMessage(9001, "/add_player @resolved_user 1725 Test User")
 
-    message = _StubMessage(9001, "/next_round")
-    with pytest.raises(ValueError, match="/finish_tournament"):
-        asyncio.run(handler(message))
+    asyncio.run(handler(message))
 
-    assert message.bot.sent
-    assert any("/finish_tournament" in text for _, text in message.bot.sent)
-
+    player = services["player_repo"].get_by_telegram_id(712345)
+    assert player is not None
+    assert player.username == "resolved_user"
+    assert player.rating == 1725

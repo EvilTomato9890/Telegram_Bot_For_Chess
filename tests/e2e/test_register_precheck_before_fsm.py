@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from bot.context import RouterContext
 from bot.routers.common import build_common_router
+from domain.models import Table
 from infra.config import AppConfig
 from infra.logging import setup_logging
 from tests.utils import build_db_url, build_services
@@ -50,9 +51,12 @@ class _StubState:
         return {}
 
 
-def test_register_flow_runs_precheck_before_asking_rating() -> None:
+def test_unregistered_user_enters_register_flow_when_registration_open() -> None:
     db_url = build_db_url("register_precheck_fsm")
     services = build_services(db_url)
+    services["tournament_service"].create_tournament()
+    services["table_repo"].add(Table(id=None, number=1, location="A"))
+    services["tournament_service"].open_registration()
 
     context = RouterContext(
         config=AppConfig(
@@ -89,6 +93,7 @@ def test_register_flow_runs_precheck_before_asking_rating() -> None:
     asyncio.run(handler(callback, state))
 
     assert callback.answered is True
-    assert state.set_called == 0
+    assert state.set_called == 1
     assert callback.message.answers
-    assert "Ошибка регистрации" in callback.message.answers[-1]
+    assert "1500" in callback.message.answers[-1]
+

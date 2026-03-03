@@ -6,7 +6,9 @@ from dataclasses import replace
 from datetime import UTC, datetime
 import math
 
+from domain.exceptions import DomainError
 from domain.models import PlayerStatus, RoundStatus, Tournament, TournamentStatus
+from infra.db import Database
 from repositories import (
     GameReportRepository,
     GameRepository,
@@ -23,6 +25,7 @@ class TournamentService:
 
     def __init__(
         self,
+        database: Database,
         tournament_repo: TournamentRepository,
         table_repo: TableRepository,
         round_repo: RoundRepository,
@@ -33,6 +36,7 @@ class TournamentService:
         *,
         default_rules: str,
     ) -> None:
+        self._database = database
         self._tournament_repo = tournament_repo
         self._table_repo = table_repo
         self._round_repo = round_repo
@@ -62,14 +66,13 @@ class TournamentService:
         )
         stored = self._tournament_repo.upsert(updated)
 
-        # Reset tournament runtime state.
-        with self._player_repo._database.transaction() as conn:  # noqa: SLF001
+        with self._database.transaction() as conn:
             self._report_repo.clear_all(conn)
             self._game_repo.clear_all(conn)
             self._round_repo.clear_all(conn)
             self._ticket_repo.clear_all(conn)
             self._player_repo.clear_all(conn)
-            conn.execute("DELETE FROM tables")
+            self._table_repo.clear_all(conn)
             conn.execute(
                 """
                 DELETE FROM sqlite_sequence
@@ -79,32 +82,44 @@ class TournamentService:
 
         return stored
 
-    def open_registration(self) -> Tournament:
-        """Move tournament from draft to registration."""
+    def validate_open_registration(self) -> None:
+        """Validate preconditions for opening registration without mutating state."""
 
         tournament = self.ensure_tournament()
         if tournament.status != TournamentStatus.DRAFT:
-            raise ValueError("Открыть регистрацию можно только из статуса draft.")
+            raise DomainError("Открыть регистрацию можно только из статуса draft.")
         player_count = self._count_active_players()
         max_capacity = len(self._table_repo.list_all()) * 2
-        if max_capacity and player_count > max_capacity:
-            raise ValueError("Игроков уже больше чем 2 * число столов.")
+        if player_count > max_capacity:
+            raise DomainError("Игроков уже больше чем 2 * число столов.")
+
+    def open_registration(self) -> Tournament:
+        """Move tournament from draft to registration."""
+
+        self.validate_open_registration()
         return self._tournament_repo.update_status(TournamentStatus.REGISTRATION, prepared=False)
+
+    def validate_set_round_number(self, rounds: int, *, confirm: bool) -> int:
+        """Validate round-number update preconditions and return recommendation."""
+
+        if rounds <= 0:
+            raise DomainError("Число туров должно быть положительным.")
+        tournament = self.ensure_tournament()
+        if tournament.status not in {TournamentStatus.DRAFT, TournamentStatus.REGISTRATION}:
+            raise DomainError("Число туров можно менять только до старта турнира.")
+        recommendation = self.round_recommendation(self._count_active_players())
+        if rounds != recommendation and not confirm:
+            raise DomainError(
+                f"Рекомендованное число туров: {recommendation}. "
+                "Повторите команду с confirm для подтверждения."
+            )
+        return recommendation
 
     def set_round_number(self, rounds: int, *, confirm: bool) -> tuple[Tournament, int]:
         """Set number of rounds with recommendation check."""
 
-        if rounds <= 0:
-            raise ValueError("Число туров должно быть положительным.")
+        recommendation = self.validate_set_round_number(rounds, confirm=confirm)
         tournament = self.ensure_tournament()
-        if tournament.status not in {TournamentStatus.DRAFT, TournamentStatus.REGISTRATION}:
-            raise ValueError("Число туров можно менять только до старта турнира.")
-        recommendation = self.round_recommendation(self._count_active_players())
-        if rounds != recommendation and not confirm:
-            raise ValueError(
-                f"Рекомендованное число туров: {recommendation}. "
-                "Повторите команду с confirm для подтверждения."
-            )
         updated = self._tournament_repo.update_status(
             tournament.status,
             number_of_rounds=rounds,
@@ -119,7 +134,7 @@ class TournamentService:
         """Persist tournament rules text."""
 
         if not text.strip():
-            raise ValueError("Текст правил не может быть пустым.")
+            raise DomainError("Текст правил не может быть пустым.")
         tournament = self.ensure_tournament()
         return self._tournament_repo.update_status(
             tournament.status,
@@ -161,7 +176,7 @@ class TournamentService:
 
         problems = self.validate_prepare_readiness()
         if problems:
-            raise ValueError("Подготовка невозможна:\n- " + "\n- ".join(problems))
+            raise DomainError("Подготовка невозможна:\n- " + "\n- ".join(problems))
 
         tournament = self.ensure_tournament()
         return self._tournament_repo.update_status(
@@ -173,18 +188,24 @@ class TournamentService:
             pending_pairing_payload=tournament.pending_pairing_payload,
         )
 
-    def start_tournament(self) -> Tournament:
-        """Move tournament to ongoing status."""
+    def validate_start_tournament(self) -> None:
+        """Validate preconditions for starting tournament without mutating state."""
 
         tournament = self.ensure_tournament()
         if tournament.status != TournamentStatus.REGISTRATION:
-            raise ValueError("Турнир можно стартовать только из registration.")
+            raise DomainError("Турнир можно стартовать только из registration.")
         if not tournament.prepared:
-            raise ValueError("Сначала выполните /prepare_tournament.")
+            raise DomainError("Сначала выполните /prepare_tournament.")
         if tournament.number_of_rounds <= 0:
-            raise ValueError("Сначала задайте число туров через /set_round_number.")
+            raise DomainError("Сначала задайте число туров через /set_round_number.")
         if self._count_active_players() < 2:
-            raise ValueError("Для старта нужно минимум 2 активных игрока.")
+            raise DomainError("Для старта нужно минимум 2 активных игрока.")
+
+    def start_tournament(self) -> Tournament:
+        """Move tournament to ongoing status."""
+
+        self.validate_start_tournament()
+        tournament = self.ensure_tournament()
         return self._tournament_repo.update_status(
             TournamentStatus.ONGOING,
             prepared=True,
@@ -201,31 +222,37 @@ class TournamentService:
         if current is None:
             tournament = self.ensure_tournament()
             if tournament.current_round <= 0:
-                raise ValueError("Нет активного тура.")
+                raise DomainError("Нет активного тура.")
             closed_round = self._round_repo.get_by_number(tournament.current_round)
             if closed_round is not None and closed_round.status == RoundStatus.CLOSED:
                 return
             current = closed_round
         if current is None:
-            raise ValueError("Нет активного тура.")
+            raise DomainError("Нет активного тура.")
         if current.status == RoundStatus.CLOSED:
             return
         games = self._game_repo.list_by_round(current.id or 0)
         if not games or any(game.result is None for game in games):
-            raise ValueError("Нельзя закрыть тур: не все результаты зафиксированы.")
+            raise DomainError("Нельзя закрыть тур: не все результаты зафиксированы.")
         current.status = RoundStatus.CLOSED
         current.closed_at = datetime.now(UTC)
         self._round_repo.update(current)
 
-    def finish_tournament(self) -> Tournament:
-        """Mark tournament as finished."""
+    def validate_finish_tournament(self) -> None:
+        """Validate preconditions for finishing tournament without mutating state."""
 
         tournament = self.ensure_tournament()
         if tournament.status != TournamentStatus.ONGOING:
-            raise ValueError("Завершение доступно только для ongoing турнира.")
+            raise DomainError("Завершение доступно только для ongoing турнира.")
         current = self._round_repo.get_current()
         if current is not None and current.status != RoundStatus.CLOSED:
-            raise ValueError("Сначала закройте текущий тур.")
+            raise DomainError("Сначала закройте текущий тур.")
+
+    def finish_tournament(self) -> Tournament:
+        """Mark tournament as finished."""
+
+        self.validate_finish_tournament()
+        tournament = self.ensure_tournament()
         return self._tournament_repo.update_status(
             TournamentStatus.FINISHED,
             prepared=tournament.prepared,
@@ -261,11 +288,9 @@ class TournamentService:
             return 1
         return int(math.ceil(math.log2(players_count)))
 
-    def _count_players(self) -> int:
-        return len(self._player_repo.list_all())
-
     def _count_active_players(self) -> int:
         return sum(1 for player in self._player_repo.list_all() if player.status == PlayerStatus.ACTIVE)
 
     def _count_disqualified_players(self) -> int:
         return sum(1 for player in self._player_repo.list_all() if player.status == PlayerStatus.DISQUALIFIED)
+

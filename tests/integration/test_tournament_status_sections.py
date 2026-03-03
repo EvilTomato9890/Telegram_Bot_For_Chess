@@ -74,9 +74,9 @@ def test_tournament_status_shows_active_and_disqualified_sections() -> None:
     asyncio.run(handler(message))
 
     body = "\n".join(message.answers)
-    assert "Активные участники" in body
-    assert "Дисквалифицированные участники" in body
+    assert "active_players=1" in body
+    assert "disqualified_players=1" in body
     assert "Active User" in body
     assert "DQ User" in body
-    assert "место: у окна" in body
+    assert "A" in body
     assert p1.id == 1

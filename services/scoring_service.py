@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 
+from domain.exceptions import DomainError
 from domain.models import GameResult, Player
 from repositories import GameRepository, PlayerRepository, RoundRepository
 
@@ -59,7 +60,7 @@ class ScoringService:
         normalized = raw.strip().lower()
         result = RESULT_ALIASES.get(normalized)
         if result is None:
-            raise ValueError("Некорректный результат. Используйте White/Black/Draw.")
+            raise DomainError("Некорректный результат. Используйте White/Black/Draw.")
         return result
 
     def result_points(self, result: GameResult) -> tuple[float, float]:
@@ -75,7 +76,7 @@ class ScoringService:
             return (1.0, 0.0)
         if result == GameResult.FORFEIT:
             return (1.0, 0.0)
-        raise ValueError("unknown result")
+        raise DomainError("unknown result")
 
     def recalculate(self) -> tuple[StandingRow, ...]:
         """Recompute standings and write values back to players table."""
@@ -183,7 +184,7 @@ class ScoringService:
         """Return top-N standings rows."""
 
         if top_n <= 0:
-            raise ValueError("top_n должен быть положительным.")
+            raise DomainError("top_n должен быть положительным.")
         return self.recalculate()[:top_n]
 
     def my_score(self, telegram_id: int) -> StandingRow:
@@ -192,5 +193,5 @@ class ScoringService:
         for row in self.recalculate():
             if row.telegram_id == telegram_id:
                 return row
-        raise ValueError("Игрок не зарегистрирован.")
+        raise DomainError("Игрок не зарегистрирован.")
 

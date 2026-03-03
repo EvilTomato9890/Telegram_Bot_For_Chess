@@ -1,6 +1,15 @@
 """Convenient top-level exports for domain entities and enums."""
 
 from .dto import CommandSpec, HelpView, PairingOutcome, ReportOutcome
+from .exceptions import (
+    AccessDeniedError,
+    CommandFormatError,
+    DomainError,
+    NotFoundError,
+    RoundsExhaustedError,
+    StateError,
+    ValidationError,
+)
 from .models import (
     Game,
     GameReport,
@@ -39,4 +48,11 @@ __all__ = [
     "HelpView",
     "PairingOutcome",
     "ReportOutcome",
+    "DomainError",
+    "ValidationError",
+    "CommandFormatError",
+    "NotFoundError",
+    "StateError",
+    "AccessDeniedError",
+    "RoundsExhaustedError",
 ]

@@ -8,6 +8,7 @@ import json
 from typing import Any, cast
 
 from domain.dto import PairingOutcome
+from domain.exceptions import DomainError, RoundsExhaustedError
 from domain.models import Game, GameResult, Player, PlayerStatus, Round, RoundStatus, Tournament, TournamentStatus
 from repositories import GameRepository, PlayerRepository, RoundRepository, TableRepository, TournamentRepository
 
@@ -50,7 +51,7 @@ class PairingService:
         del tournament_id, actor_id  # Single-tournament mode.
         tournament = self._require_prepared_registration_tournament()
         if tournament.current_round != 0:
-            raise ValueError("Предпросмотр доступен только до старта первого тура.")
+            raise DomainError("Предпросмотр доступен только до старта первого тура.")
 
         pending = self._build_pending_from_engine()
         self._store_pending_payload(tournament, pending)
@@ -111,41 +112,62 @@ class PairingService:
         self._validate_can_generate(tournament)
         pending = self._load_pending_payload(tournament)
         if pending is None:
-            raise ValueError("Нет ожидающего подтверждения генерации.")
+            raise DomainError("Нет ожидающего подтверждения генерации.")
         return self._persist_generated_round(
             tournament=tournament,
             pairing_data=pending.games,
             bye_player_id=pending.bye_player_id,
         )
 
+    def peek_pending_confirmation_reason(self, tournament_id: int, actor_id: int) -> str | None:
+        """Return pending confirmation reason if next-round generation is blocked by existing pending payload."""
+
+        del tournament_id, actor_id
+        tournament = self._require_ongoing_tournament()
+        self._validate_can_generate(tournament)
+        pending = self._load_pending_payload(tournament)
+        if pending is None or not pending.needs_confirmation:
+            return None
+        return pending.confirmation_reason
+
+    def validate_confirm_next_round(self, tournament_id: int, actor_id: int) -> None:
+        """Validate that confirm-next-round command can actually mutate tournament state."""
+
+        del tournament_id, actor_id
+        tournament = self._require_ongoing_tournament()
+        self._validate_can_generate(tournament)
+        pending = self._load_pending_payload(tournament)
+        if pending is None:
+            raise DomainError("Нет ожидающего подтверждения генерации.")
+
     def _validate_can_generate(self, tournament: Tournament) -> None:
         if tournament.current_round > 0:
             current_round = self._round_repo.get_by_number(tournament.current_round)
             if current_round is not None and current_round.status != RoundStatus.CLOSED:
-                raise ValueError("Сначала закройте текущий тур перед генерацией следующего.")
+                raise DomainError("Сначала закройте текущий тур перед генерацией следующего.")
         if tournament.number_of_rounds and tournament.current_round >= tournament.number_of_rounds:
-            raise ValueError("Достигнуто заданное число туров.")
+            raise RoundsExhaustedError("Достигнуто заданное число туров.")
 
     def _require_ongoing_tournament(self) -> Tournament:
         tournament = self._tournament_repo.get()
         if tournament is None:
-            raise ValueError("Турнир не создан.")
+            raise DomainError("Турнир не создан.")
         if tournament.status != TournamentStatus.ONGOING:
-            raise ValueError("Генерация пар доступна только в ongoing.")
+            raise DomainError("Генерация пар доступна только в ongoing.")
         return tournament
 
     def _require_prepared_registration_tournament(self) -> Tournament:
         tournament = self._tournament_repo.get()
         if tournament is None:
-            raise ValueError("Турнир не создан.")
+            raise DomainError("Турнир не создан.")
         if tournament.status != TournamentStatus.REGISTRATION or not tournament.prepared:
-            raise ValueError("Предпросмотр доступен только после /prepare_tournament и до /start_tournament.")
+            raise DomainError("Предпросмотр доступен только после /prepare_tournament и до /start_tournament.")
         return tournament
 
     def _build_pending_from_engine(self) -> _PendingPairing:
         active_players = [player for player in self._player_repo.list_all() if player.status == PlayerStatus.ACTIVE]
         if len(active_players) < 2:
-            raise ValueError("Недостаточно активных игроков для генерации тура.")
+            raise DomainError("Недостаточно активных игроков для генерации тура.")
 
         tables = self._table_repo.list_all()
         slots = [
@@ -161,7 +183,7 @@ class PairingService:
             engine_result = generate_pairings(history, slots)
         except InsufficientTablesError as exc:
             required_tables = len(active_players) // 2
-            raise ValueError(
+            raise DomainError(
                 f"Недостаточно столов для генерации тура: нужно минимум {required_tables}, доступно {len(tables)}."
             ) from exc
 
@@ -232,7 +254,7 @@ class PairingService:
             return None
         raw_payload = json.loads(tournament.pending_pairing_payload)
         if not isinstance(raw_payload, dict):
-            raise ValueError("Некорректный pending payload для генерации тура.")
+            raise DomainError("Некорректный pending payload для генерации тура.")
         raw_games = raw_payload.get("games", [])
         games: list[dict[str, Any]] = []
         if isinstance(raw_games, list):
@@ -324,7 +346,7 @@ class PairingService:
             )
         )
         if round_row.id is None:
-            raise ValueError("Не удалось создать тур.")
+            raise DomainError("Не удалось создать тур.")
 
         persisted_games: list[Game] = []
         for game_data in pairing_data:
@@ -406,3 +428,5 @@ class PairingService:
         player.current_board = board_number
         player.seat_hint = f"Стол {board_number}, цвет: {color}, локация: {location}"
         self._player_repo.update(player)
+
+

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from domain.exceptions import DomainError
+
 from dataclasses import dataclass
 from pathlib import Path
 import os
@@ -39,7 +41,7 @@ def _load_dotenv(dotenv_path: Path) -> None:
 def _required(name: str) -> str:
     value = os.getenv(name)
     if value is None or value.strip() == "":
-        raise ValueError(f"Missing required environment variable: {name}")
+        raise DomainError(f"Missing required environment variable: {name}")
     return value
 
 
@@ -58,11 +60,11 @@ def _validate_token(raw_token: str) -> str:
     token = raw_token.strip()
     lower_token = token.lower()
     if any(marker in lower_token for marker in _TOKEN_PLACEHOLDER_MARKERS):
-        raise ValueError(
+        raise DomainError(
             "TOKEN похож на шаблонный. Укажите реальный токен от BotFather в .env."
         )
     if not _TOKEN_PATTERN.match(token):
-        raise ValueError(
+        raise DomainError(
             "Некорректный формат TOKEN. Ожидается строка вида '<digits>:<secret>'."
         )
     return token
@@ -75,7 +77,7 @@ def _parse_ids(raw: str | None, *, field_name: str) -> list[int]:
     try:
         return [int(item) for item in items]
     except ValueError as exc:
-        raise ValueError(f"{field_name} must contain comma-separated integers") from exc
+        raise DomainError(f"{field_name} must contain comma-separated integers") from exc
 
 
 def _parse_positive_int(raw: str | None, *, default: int) -> int:
@@ -83,7 +85,7 @@ def _parse_positive_int(raw: str | None, *, default: int) -> int:
         return default
     value = int(raw)
     if value <= 0:
-        raise ValueError("STANDINGS_DEFAULT_TOP must be positive")
+        raise DomainError("STANDINGS_DEFAULT_TOP must be positive")
     return value
 
 
@@ -105,3 +107,6 @@ def load_config(dotenv_path: str | Path = ".env") -> AppConfig:
 
 
 __all__ = ["AppConfig", "load_config"]
+
+
+

@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from bot.app import create_app
+from domain.exceptions import DomainError
 
 
 def main() -> None:
@@ -10,7 +11,7 @@ def main() -> None:
     try:
         app = create_app(dotenv_path=dotenv_path)
         app.run()
-    except (ValueError, RuntimeError) as exc:
+    except (DomainError, RuntimeError) as exc:
         raise SystemExit(str(exc))
 
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from domain.exceptions import DomainError
+
 from datetime import UTC, datetime
 import sqlite3
 
@@ -34,22 +36,38 @@ class UndoRepository:
             row = connection.execute("SELECT * FROM undo_snapshots WHERE id = ?", (cursor.lastrowid,)).fetchone()
             mapped = self._map_row(row)
             if mapped is None:
-                raise ValueError("failed to insert undo snapshot")
+                raise DomainError("failed to insert undo snapshot")
             return mapped
         with self._database.transaction() as conn:
             cursor = conn.execute(sql, params)
             row = conn.execute("SELECT * FROM undo_snapshots WHERE id = ?", (cursor.lastrowid,)).fetchone()
             mapped = self._map_row(row)
             if mapped is None:
-                raise ValueError("failed to insert undo snapshot")
+                raise DomainError("failed to insert undo snapshot")
             return mapped
 
-    def get_last_unrestored(self, connection: sqlite3.Connection | None = None) -> UndoSnapshot | None:
-        sql = "SELECT * FROM undo_snapshots WHERE restored_at IS NULL ORDER BY id DESC LIMIT 1"
+    def get_last_unrestored(
+        self,
+        actor_telegram_id: int | None = None,
+        connection: sqlite3.Connection | None = None,
+    ) -> UndoSnapshot | None:
+        """Return latest unrestored snapshot, optionally scoped to one actor."""
+
+        if actor_telegram_id is None:
+            sql = "SELECT * FROM undo_snapshots WHERE restored_at IS NULL ORDER BY id DESC LIMIT 1"
+            params: tuple[object, ...] = ()
+        else:
+            sql = """
+                SELECT * FROM undo_snapshots
+                WHERE restored_at IS NULL AND actor_telegram_id = ?
+                ORDER BY id DESC
+                LIMIT 1
+            """
+            params = (actor_telegram_id,)
         if connection is not None:
-            return self._map_row(connection.execute(sql).fetchone())
+            return self._map_row(connection.execute(sql, params).fetchone())
         with self._database.transaction() as conn:
-            return self._map_row(conn.execute(sql).fetchone())
+            return self._map_row(conn.execute(sql, params).fetchone())
 
     def mark_restored(self, snapshot_id: int, connection: sqlite3.Connection | None = None) -> None:
         restored_at = datetime.now(UTC).isoformat()
@@ -58,6 +76,16 @@ class UndoRepository:
             return
         with self._database.transaction() as conn:
             conn.execute("UPDATE undo_snapshots SET restored_at = ? WHERE id = ?", (restored_at, snapshot_id))
+
+    def delete_by_id(self, snapshot_id: int, connection: sqlite3.Connection | None = None) -> bool:
+        """Delete snapshot row (used to cleanup failed pre-mutation attempts)."""
+
+        if connection is not None:
+            cursor = connection.execute("DELETE FROM undo_snapshots WHERE id = ?", (snapshot_id,))
+            return cursor.rowcount > 0
+        with self._database.transaction() as conn:
+            cursor = conn.execute("DELETE FROM undo_snapshots WHERE id = ?", (snapshot_id,))
+            return cursor.rowcount > 0
 
     @staticmethod
     def _map_row(row: sqlite3.Row | None) -> UndoSnapshot | None:
@@ -72,4 +100,6 @@ class UndoRepository:
             created_at=created_at,
             restored_at=parse_iso(row["restored_at"]),
         )
+
+
 

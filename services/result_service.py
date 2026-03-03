@@ -5,10 +5,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from domain.dto import ApproveOutcome, ReportOutcome
+from domain.exceptions import DomainError
 from domain.models import Game, RoundStatus, TournamentStatus
 from repositories import GameReportRepository, GameRepository, PlayerRepository, RoundRepository, TournamentRepository
 
-from .notification_service import NotificationService
 from .scoring_service import ScoringService
 
 
@@ -23,7 +23,6 @@ class ResultService:
         report_repo: GameReportRepository,
         tournament_repo: TournamentRepository,
         scoring_service: ScoringService,
-        notification_service: NotificationService,
     ) -> None:
         self._player_repo = player_repo
         self._round_repo = round_repo
@@ -31,14 +30,13 @@ class ResultService:
         self._report_repo = report_repo
         self._tournament_repo = tournament_repo
         self._scoring_service = scoring_service
-        self._notification_service = notification_service
 
     def ensure_reportable_game(self, telegram_id: int) -> None:
         """Validate that player currently has an active game for /report."""
 
         player = self._player_repo.get_by_telegram_id(telegram_id)
         if player is None or player.id is None:
-            raise ValueError("Игрок не зарегистрирован.")
+            raise DomainError("Игрок не зарегистрирован.")
         self._resolve_game_for_player(player.id)
 
     def submit_player_report(self, telegram_id: int, raw_result: str) -> ReportOutcome:
@@ -46,13 +44,13 @@ class ResultService:
 
         player = self._player_repo.get_by_telegram_id(telegram_id)
         if player is None or player.id is None:
-            raise ValueError("Игрок не зарегистрирован.")
+            raise DomainError("Игрок не зарегистрирован.")
         result = self._scoring_service.parse_result_token(raw_result)
         game = self._resolve_game_for_player(player.id)
         if game.result is not None:
-            raise ValueError("Результат уже зафиксирован. Обратитесь к арбитру.")
+            raise DomainError("Результат уже зафиксирован. Обратитесь к арбитру.")
         if player.id not in {game.white_player_id, game.black_player_id}:
-            raise ValueError("Нельзя репортить результат чужой партии.")
+            raise DomainError("Нельзя репортить результат чужой партии.")
 
         game_id = game.id or 0
         self._report_repo.upsert(game_id, player.id, result)
@@ -63,7 +61,7 @@ class ResultService:
         own = next((report for report in reports if report.reporter_player_id == player.id), None)
         opp = next((report for report in reports if report.reporter_player_id == opponent_id), None)
         if own is None:
-            raise ValueError("Не удалось сохранить отчет.")
+            raise DomainError("Не удалось сохранить отчет.")
         if opp is None:
             return ReportOutcome(
                 game_id=game_id,
@@ -112,15 +110,15 @@ class ResultService:
 
         game = self._game_repo.get_by_id(game_id)
         if game is None:
-            raise ValueError("Игра не найдена.")
+            raise DomainError("Игра не найдена.")
         tournament = self._tournament_repo.get()
         if tournament is None or tournament.status != TournamentStatus.ONGOING:
-            raise ValueError("Подтверждение результата доступно только во время турнира.")
+            raise DomainError("Подтверждение результата доступно только во время турнира.")
         round_ = self._round_repo.get_by_id(game.round_id)
         if round_ is None:
-            raise ValueError("Тур игры не найден.")
+            raise DomainError("Тур игры не найден.")
         if round_.number != tournament.current_round:
-            raise ValueError("Изменять результат можно только в текущем туре до старта следующего.")
+            raise DomainError("Изменять результат можно только в текущем туре до старта следующего.")
 
         result = self._scoring_service.parse_result_token(raw_result)
         game.result = result
@@ -146,18 +144,18 @@ class ResultService:
     def _resolve_game_for_player(self, player_id: int) -> Game:
         tournament = self._tournament_repo.get()
         if tournament is None:
-            raise ValueError("Турнир не создан.")
+            raise DomainError("Турнир не создан.")
         if tournament.status != TournamentStatus.ONGOING or tournament.current_round <= 0:
-            raise ValueError("Нет активной партии для /report.")
+            raise DomainError("Нет активной партии для /report.")
         current_round = self._round_repo.get_by_number(tournament.current_round)
         if current_round is None or current_round.id is None or current_round.status != RoundStatus.ONGOING:
-            raise ValueError("Нет активной партии для /report.")
+            raise DomainError("Нет активной партии для /report.")
 
         games = self._game_repo.list_by_player(player_id)
         for game in games:
             if game.round_id == current_round.id and game.result is None and not game.is_bye:
                 return game
-        raise ValueError("Нет активной партии для /report.")
+        raise DomainError("Нет активной партии для /report.")
 
     def _resolve_player_telegram_ids(self, game: Game) -> tuple[int | None, int | None]:
         white_player = self._player_repo.get_by_id(game.white_player_id)

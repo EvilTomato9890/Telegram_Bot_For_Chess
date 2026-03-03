@@ -7,6 +7,7 @@ import json
 from typing import Any, cast
 
 from domain.dto import UndoResult
+from domain.exceptions import DomainError
 from domain.models import UndoSnapshot
 from infra.db import Database
 from infra.logging import AuditLogger
@@ -19,6 +20,28 @@ class UndoService:
     """Store and restore full tournament snapshots."""
 
     SNAPSHOT_TABLES: tuple[str, ...] = (
+        "tournaments",
+        "players",
+        "rounds",
+        "tables",
+        "games",
+        "game_reports",
+        "tickets",
+        "role_grants",
+    )
+    # Delete children first to satisfy FK constraints.
+    RESTORE_DELETE_ORDER: tuple[str, ...] = (
+        "game_reports",
+        "tickets",
+        "games",
+        "rounds",
+        "players",
+        "tables",
+        "role_grants",
+        "tournaments",
+    )
+    # Insert parents first to satisfy FK constraints.
+    RESTORE_INSERT_ORDER: tuple[str, ...] = (
         "tournaments",
         "players",
         "rounds",
@@ -61,18 +84,24 @@ class UndoService:
             )
             return snapshot
 
-    def undo_last_admin_action(self, actor_id: int) -> UndoResult:
-        """Restore most recent unrestored snapshot and return undo payload."""
+    def discard_snapshot(self, snapshot_id: int) -> None:
+        """Delete snapshot when command failed before any domain mutation."""
 
-        snapshot = self._undo_repo.get_last_unrestored()
+        self._undo_repo.delete_by_id(snapshot_id)
+
+    def undo_last_admin_action(self, actor_id: int) -> UndoResult:
+        """Restore most recent unrestored snapshot for current admin."""
+
+        snapshot = self._undo_repo.get_last_unrestored(actor_telegram_id=actor_id)
         if snapshot is None or snapshot.id is None:
-            raise ValueError("Нет действий для отката.")
+            raise DomainError("Нет действий для отката.")
+
         payload = json.loads(snapshot.snapshot_json)
         payload_map = cast(dict[str, Any], payload)
         with self._database.transaction() as conn:
-            for table in self.SNAPSHOT_TABLES:
+            for table in self.RESTORE_DELETE_ORDER:
                 conn.execute(f"DELETE FROM {table}")
-            for table in self.SNAPSHOT_TABLES:
+            for table in self.RESTORE_INSERT_ORDER:
                 rows_raw = payload_map.get(table, [])
                 if not isinstance(rows_raw, list):
                     continue

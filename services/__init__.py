@@ -1,6 +1,7 @@
 """Service layer exports."""
 
 from .acl_service import AccessControlService, COMMAND_REGISTRY
+from .notification_gateway import NotificationGateway
 from .notification_service import NotificationService
 from .pairing_service import PairingService
 from .registration_service import RegistrationService
@@ -13,6 +14,7 @@ from .undo_service import UndoService
 __all__ = [
     "COMMAND_REGISTRY",
     "AccessControlService",
+    "NotificationGateway",
     "NotificationService",
     "PairingService",
     "RegistrationService",

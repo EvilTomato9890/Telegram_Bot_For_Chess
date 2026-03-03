@@ -1,4 +1,4 @@
-from domain.models import Role
+from domain.models import Role, Table
 from tests.utils import build_db_url, build_services
 
 
@@ -11,6 +11,9 @@ def test_acl_or_logic_for_multi_role_user() -> None:
     assert acl.can_execute(9002, "/ticket_queue") is True
     assert acl.can_execute(777, "/register") is True
     assert acl.can_execute(777, "/my_score") is False
+    assert acl.can_execute(777, "/rules") is False
+    assert acl.can_execute(777, "/schedule") is False
+    assert acl.can_execute(777, "/report") is False
 
 
 def test_acl_registry_contains_new_admin_commands_only() -> None:
@@ -44,8 +47,10 @@ def test_player_role_is_granted_after_registration() -> None:
     acl = services["acl_service"]
     registration = services["registration_service"]
     tournament = services["tournament_service"]
+    table_repo = services["table_repo"]
 
     tournament.create_tournament()
+    table_repo.add(Table(id=None, number=1, location="A"))
     tournament.open_registration()
     registration.register(777, "u777", "User 777", 1200)
 
@@ -57,8 +62,10 @@ def test_disqualified_player_is_limited_to_read_only_commands() -> None:
     acl = services["acl_service"]
     registration = services["registration_service"]
     tournament = services["tournament_service"]
+    table_repo = services["table_repo"]
 
     tournament.create_tournament()
+    table_repo.add(Table(id=None, number=1, location="A"))
     tournament.open_registration()
     player = registration.register(777, "u777", "User 777", 1200)
     assert acl.can_execute(777, "/report") is True
@@ -73,3 +80,21 @@ def test_disqualified_player_is_limited_to_read_only_commands() -> None:
     assert acl.can_execute(777, "/rules") is True
     assert acl.can_execute(777, "/schedule") is True
     assert acl.can_execute(777, "/my_score") is True
+    assert acl.can_execute(777, "/standings") is True
+
+
+def test_disqualified_admin_can_execute_admin_commands() -> None:
+    services = build_services(build_db_url("acl_dq_admin"))
+    acl = services["acl_service"]
+    registration = services["registration_service"]
+    tournament = services["tournament_service"]
+    table_repo = services["table_repo"]
+
+    tournament.create_tournament()
+    table_repo.add(Table(id=None, number=1, location="A"))
+    tournament.open_registration()
+    player = registration.register(9001, "admin", "Admin User", 1200)
+    registration.disqualify(player.id or 0)
+
+    assert acl.can_execute(9001, "/announce") is True
+    assert acl.can_execute(9001, "/set_rules") is True

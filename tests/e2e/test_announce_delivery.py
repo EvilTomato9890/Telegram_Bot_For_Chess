@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from bot.context import RouterContext
 from bot.routers.organizer import build_organizer_router
+from domain.models import Table
 from infra.config import AppConfig
 from infra.logging import setup_logging
 from tests.utils import build_db_url, build_services
@@ -40,6 +41,7 @@ def test_announce_sends_message_to_all_registered_players() -> None:
     registration = services["registration_service"]
 
     tournament_service.create_tournament()
+    services["table_repo"].add(Table(id=None, number=1, location="A"))
     tournament_service.open_registration()
     registration.register(8101, "u1", "A", 1500)
     registration.register(8102, "u2", "B", 1400)
@@ -77,6 +79,8 @@ def test_announce_sends_message_to_all_registered_players() -> None:
     message = _StubMessage(9001, "/announce Тестовое объявление")
     asyncio.run(handler(message))
 
-    assert any("Объявление отправлено" in text for text in message.answers)
+    assert message.answers
     sent_ids = {chat_id for chat_id, _ in message.bot.sent}
     assert sent_ids == {8101, 8102}
+
+

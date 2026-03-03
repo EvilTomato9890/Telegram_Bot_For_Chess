@@ -90,6 +90,7 @@ def build_services(db_url: str) -> ServiceBundle:
     scoring_service = ScoringService(player_repo, round_repo, game_repo)
     registration_service = RegistrationService(player_repo, tournament_repo, table_repo)
     tournament_service = TournamentService(
+        database=database,
         tournament_repo=tournament_repo,
         table_repo=table_repo,
         round_repo=round_repo,
@@ -114,7 +115,6 @@ def build_services(db_url: str) -> ServiceBundle:
         report_repo=report_repo,
         tournament_repo=tournament_repo,
         scoring_service=scoring_service,
-        notification_service=notification_service,
     )
     ticket_service = TicketService(
         ticket_repo=ticket_repo,

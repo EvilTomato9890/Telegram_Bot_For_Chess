@@ -33,6 +33,18 @@ def test_capacity_limit_ignores_disqualified_players() -> None:
     assert p3.id == 3
 
 
+def test_self_registration_precheck_fails_without_tables() -> None:
+    services = build_services(build_db_url("register_precheck_no_tables"))
+    registration = services["registration_service"]
+    tournament_service = services["tournament_service"]
+
+    tournament_service.create_tournament()
+    tournament_service.open_registration()
+
+    with pytest.raises(ValueError, match="без столов"):
+        registration.validate_self_registration_precheck(9999)
+
+
 def test_admin_precheck_blocks_changes_after_start() -> None:
     services = build_services(build_db_url("register_precheck_admin"))
     registration = services["registration_service"]

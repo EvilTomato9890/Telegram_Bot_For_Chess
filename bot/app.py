@@ -11,6 +11,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.exceptions import TelegramUnauthorizedError
 from aiogram.types.error_event import ErrorEvent
 from bot.context import RouterContext
+from domain.exceptions import DomainError
 from bot.routers import (
     build_arbitrator_router,
     build_common_router,
@@ -33,6 +34,7 @@ from repositories import (
 )
 from services import (
     AccessControlService,
+    NotificationGateway,
     NotificationService,
     PairingService,
     RegistrationService,
@@ -61,6 +63,7 @@ class Container:
     role_repo: RoleGrantRepository
     undo_repo: UndoRepository
     acl_service: AccessControlService
+    notification_gateway: NotificationGateway
     notification_service: NotificationService
     scoring_service: ScoringService
     registration_service: RegistrationService
@@ -77,6 +80,7 @@ class Container:
             config=self.config,
             audit_logger=self.audit_logger,
             acl_service=self.acl_service,
+            notification_gateway=self.notification_gateway,
             notification_service=self.notification_service,
             scoring_service=self.scoring_service,
             registration_service=self.registration_service,
@@ -133,7 +137,7 @@ class BotApplication:
             exception = event.exception
             update = event.update
             logger = logging.getLogger(__name__)
-            if isinstance(exception, (ValueError, PermissionError)):
+            if isinstance(exception, (DomainError, PermissionError)):
                 logger.warning("Handled command error: %s", exception)
             else:
                 logger.exception("Unhandled update error: %s", exception)
@@ -148,14 +152,17 @@ class BotApplication:
                 reason=str(exception),
             )
             target_message = update.message or (update.callback_query.message if update.callback_query else None)
-            if isinstance(exception, ValueError) and target_message is not None:
+            if isinstance(exception, DomainError) and target_message is not None:
                 await target_message.answer(f"Ошибка: {exception}")
             elif isinstance(exception, PermissionError) and target_message is not None:
-                await target_message.answer("Недостаточно прав для этой команды.")
+                await target_message.answer(str(exception))
             elif target_message is not None:
                 await target_message.answer("Внутренняя ошибка обработки команды.")
             if update.callback_query is not None:
-                await update.callback_query.answer()
+                try:
+                    await update.callback_query.answer()
+                except Exception:  # noqa: BLE001
+                    logger.debug("Failed to answer callback in global error handler.")
 
         bot = Bot(token=self.container.config.token)
         try:
@@ -195,6 +202,7 @@ def create_container(dotenv_path: str | Path | None = None) -> Container:
         player_repo=player_repo,
     )
     notification_service = NotificationService()
+    notification_gateway = NotificationGateway(notification_service)
     scoring_service = ScoringService(player_repo=player_repo, round_repo=round_repo, game_repo=game_repo)
     registration_service = RegistrationService(
         player_repo=player_repo,
@@ -202,6 +210,7 @@ def create_container(dotenv_path: str | Path | None = None) -> Container:
         table_repo=table_repo,
     )
     tournament_service = TournamentService(
+        database=database,
         tournament_repo=tournament_repo,
         table_repo=table_repo,
         round_repo=round_repo,
@@ -226,7 +235,6 @@ def create_container(dotenv_path: str | Path | None = None) -> Container:
         report_repo=report_repo,
         tournament_repo=tournament_repo,
         scoring_service=scoring_service,
-        notification_service=notification_service,
     )
     ticket_service = TicketService(
         ticket_repo=ticket_repo,
@@ -256,6 +264,7 @@ def create_container(dotenv_path: str | Path | None = None) -> Container:
         role_repo=role_repo,
         undo_repo=undo_repo,
         acl_service=acl_service,
+        notification_gateway=notification_gateway,
         notification_service=notification_service,
         scoring_service=scoring_service,
         registration_service=registration_service,
@@ -274,4 +283,5 @@ def create_app(dotenv_path: str | Path | None = None) -> BotApplication:
 
 
 __all__ = ["Container", "BotApplication", "create_container", "create_app"]
+
 

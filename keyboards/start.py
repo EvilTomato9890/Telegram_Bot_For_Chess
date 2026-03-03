@@ -17,3 +17,4 @@ def start_keyboard() -> InlineKeyboardMarkup:
         ]
     )
 
+

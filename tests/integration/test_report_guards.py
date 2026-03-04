@@ -1,4 +1,4 @@
-import pytest
+﻿import pytest
 
 from domain.models import Table, TournamentStatus
 from tests.utils import build_db_url, build_services
@@ -27,5 +27,5 @@ def test_report_is_blocked_without_active_game() -> None:
         pending_pairing_payload=None,
     )
 
-    with pytest.raises(ValueError, match="Нет активной партии для /report."):
+    with pytest.raises(ValueError, match=r"Нет активной партии для /report\."):
         result_service.submit_player_report(5001, "white")

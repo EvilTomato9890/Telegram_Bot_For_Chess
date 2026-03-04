@@ -14,6 +14,7 @@ class CommandSpec:
     name: str
     roles: frozenset[Role]
     description: str
+    group: str = "Прочее"
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,4 +23,3 @@ class HelpView:
 
     actor_id: int
     commands: tuple[CommandSpec, ...]
-

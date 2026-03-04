@@ -1,4 +1,4 @@
-import pytest
+﻿import pytest
 
 from domain.models import Table
 from tests.utils import build_db_url, build_services

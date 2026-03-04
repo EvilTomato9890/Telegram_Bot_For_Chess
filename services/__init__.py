@@ -9,7 +9,6 @@ from .result_service import ResultService
 from .scoring_service import ScoringService, StandingRow
 from .ticket_service import TicketService
 from .tournament_service import TournamentService
-from .undo_service import UndoService
 
 __all__ = [
     "COMMAND_REGISTRY",
@@ -23,5 +22,4 @@ __all__ = [
     "StandingRow",
     "TicketService",
     "TournamentService",
-    "UndoService",
 ]

@@ -1,4 +1,4 @@
-"""Admin router composition."""
+﻿"""Admin router composition."""
 
 from __future__ import annotations
 
@@ -22,7 +22,6 @@ def build_organizer_router(context: RouterContext) -> Router:
         tournament_service=context.tournament_service,
         pairing_service=context.pairing_service,
         scoring_service=context.scoring_service,
-        undo_service=context.undo_service,
         player_repo=context.player_repo,
         round_repo=context.round_repo,
         game_repo=context.game_repo,

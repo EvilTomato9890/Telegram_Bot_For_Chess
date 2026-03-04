@@ -1,4 +1,4 @@
-from keyboards.start import start_keyboard
+﻿from keyboards.start import start_keyboard
 
 
 def test_start_keyboard_has_two_inline_buttons() -> None:

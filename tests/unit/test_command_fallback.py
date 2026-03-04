@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 
 import pytest
 
@@ -27,5 +27,5 @@ def test_unregistered_denied_command_has_register_hint() -> None:
     services = build_services(build_db_url("fallback_acl_unregistered"))
     acl = services["acl_service"]
 
-    with pytest.raises(PermissionError, match="Команда недоступна до регистрации. Используйте /register."):
+    with pytest.raises(PermissionError, match=r"Команда недоступна до регистрации\. Используйте /register\."):
         acl.require(777777, "/rules")

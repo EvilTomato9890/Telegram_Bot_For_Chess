@@ -1,7 +1,8 @@
-"""Common routes shared by all roles."""
+﻿"""Common routes shared by all roles."""
 
 from __future__ import annotations
 
+from collections import defaultdict
 import json
 
 from aiogram import Bot, F, Router
@@ -11,8 +12,9 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
 from bot.context import RouterContext
+from domain.dto import CommandSpec
 from domain.exceptions import DomainError
-from domain.models import Role, TicketType, TournamentStatus
+from domain.models import TicketType, TournamentStatus
 from keyboards import player_menu_keyboard, report_keyboard, start_keyboard
 
 
@@ -150,8 +152,24 @@ def build_common_router(context: RouterContext) -> Router:
         if not view.commands:
             await message.answer("Нет доступных команд.")
             return
-        lines = [f"{spec.name} - {spec.description}" for spec in sorted(view.commands, key=lambda item: item.name)]
-        await message.answer("Доступные команды:\n" + "\n".join(lines))
+
+        group_order = ["Общие", "Игрок", "Тикеты", "Арбитраж", "Участники", "Столы", "Турнир", "Прочее"]
+        order_index = {name: index for index, name in enumerate(group_order)}
+        grouped: dict[str, list[CommandSpec]] = defaultdict(list)
+        for spec in sorted(
+            view.commands,
+            key=lambda item: (order_index.get(item.group, len(group_order)), item.group, item.name),
+        ):
+            grouped[spec.group].append(spec)
+
+        lines = ["Доступные команды:"]
+        known_groups = [name for name in group_order if grouped.get(name)]
+        extra_groups = sorted(name for name in grouped if name not in order_index)
+        for group_name in [*known_groups, *extra_groups]:
+            lines.append(f"\n{group_name}:")
+            for spec in grouped[group_name]:
+                lines.append(f"{spec.name} - {spec.description}")
+        await message.answer("\n".join(lines))
 
     @router.message(Command("rules"))
     async def rules_handler(message: Message) -> None:
@@ -211,18 +229,29 @@ def build_common_router(context: RouterContext) -> Router:
         if message.from_user is None:
             return
         acl.require(message.from_user.id, "/close_ticket")
-        roles = acl.resolve_roles(message.from_user.id)
         parts = (message.text or "").split()
-        ticket_id: int | None = None
-        if len(parts) > 1:
-            try:
-                ticket_id = int(parts[1])
-            except ValueError as exc:
-                raise DomainError("Формат: /close_ticket <ticket_id>") from exc
-        elif Role.ARBITRATOR in roles or Role.ADMIN in roles:
-            if Role.PLAYER not in roles:
-                raise DomainError("Для арбитра/админа используйте /close_ticket <ticket_id>.")
-        closed = ticket_service.close_ticket(actor_id=message.from_user.id, ticket_id=ticket_id)
+        if len(parts) != 1:
+            raise DomainError("Формат: /close_ticket")
+        closed = ticket_service.close_ticket(actor_id=message.from_user.id, ticket_id=None)
+        await message.answer(f"Тикет #{closed.id} закрыт.")
+
+    @router.message(Command("close_ticket_by_id"))
+    async def close_ticket_by_id_handler(message: Message) -> None:
+        if message.from_user is None:
+            return
+        acl.require(message.from_user.id, "/close_ticket_by_id")
+        parts = (message.text or "").split()
+        if len(parts) != 2:
+            raise DomainError("Формат: /close_ticket_by_id <ticket_id>")
+        try:
+            ticket_id = int(parts[1])
+        except ValueError as exc:
+            raise DomainError("ticket_id должен быть числом.") from exc
+        closed = ticket_service.close_ticket(
+            actor_id=message.from_user.id,
+            ticket_id=ticket_id,
+            audit_command="/close_ticket_by_id",
+        )
         await message.answer(f"Тикет #{closed.id} закрыт.")
 
     @router.message(Command("create_ticket"))
@@ -246,6 +275,12 @@ def build_common_router(context: RouterContext) -> Router:
         assignee_text = str(ticket.assignee_telegram_id) if ticket.assignee_telegram_id is not None else "не назначен"
         delivery_note = ""
         if ticket.assignee_telegram_id is not None:
+            author_player = player_repo.get_by_telegram_id(message.from_user.id)
+            author_table = (
+                str(author_player.current_board)
+                if author_player is not None and author_player.current_board is not None
+                else "неизвестно"
+            )
             delivered = await notify_user(
                 message.bot,
                 ticket.assignee_telegram_id,
@@ -253,6 +288,7 @@ def build_common_router(context: RouterContext) -> Router:
                     f"Новый тикет #{ticket.id}\n"
                     f"Тип: {ticket.ticket_type.value}\n"
                     f"Автор: {ticket.author_telegram_id}\n"
+                    f"Стол отправителя: {author_table}\n"
                     f"Описание: {ticket.description}"
                 ),
             )
@@ -445,6 +481,8 @@ def build_common_router(context: RouterContext) -> Router:
         return None
 
     return router
+
+
 
 
 

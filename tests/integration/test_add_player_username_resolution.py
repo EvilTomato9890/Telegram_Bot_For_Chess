@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 from dataclasses import dataclass
 from types import SimpleNamespace
 
@@ -62,7 +62,6 @@ def test_add_player_resolves_username_via_bot_get_chat() -> None:
         pairing_service=services["pairing_service"],
         result_service=services["result_service"],
         ticket_service=services["ticket_service"],
-        undo_service=services["undo_service"],
         player_repo=services["player_repo"],
         round_repo=services["round_repo"],
         game_repo=services["game_repo"],

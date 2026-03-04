@@ -17,6 +17,7 @@ def build_arbitrator_router(context: RouterContext) -> Router:
     acl = context.acl_service
     result_service = context.result_service
     ticket_service = context.ticket_service
+    player_repo = context.player_repo
     notification_gateway = context.notification_gateway
     audit_logger = context.audit_logger
 
@@ -76,10 +77,13 @@ def build_arbitrator_router(context: RouterContext) -> Router:
             return
         lines = []
         for ticket in tickets:
+            author = player_repo.get_by_telegram_id(ticket.author_telegram_id)
+            author_table = author.current_board if author is not None else None
             lines.append(
                 (
                     f"#{ticket.id} | type={ticket.ticket_type.value} | status={ticket.status.value} | "
                     f"author={ticket.author_telegram_id} | assignee={ticket.assignee_telegram_id or '-'} | "
+                    f"table={author_table if author_table is not None else 'unknown'} | "
                     f"opened={ticket.opened_at.isoformat()} | {ticket.description}"
                 )
             )

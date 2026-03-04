@@ -1,4 +1,4 @@
-from keyboards.player_menu import player_menu_keyboard
+﻿from keyboards.player_menu import player_menu_keyboard
 
 
 def test_player_menu_keyboard_contains_expected_commands() -> None:

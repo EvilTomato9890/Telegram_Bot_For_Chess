@@ -12,7 +12,6 @@ from .result_service import ResultService
 from .scoring_service import ScoringService
 from .ticket_service import TicketService
 from .tournament_service import TournamentService
-from .undo_service import UndoService
 
 __all__ = [
     "AccessControlService",
@@ -24,5 +23,4 @@ __all__ = [
     "ScoringService",
     "TicketService",
     "TournamentService",
-    "UndoService",
 ]

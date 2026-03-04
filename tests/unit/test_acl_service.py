@@ -1,4 +1,4 @@
-from domain.models import Role, Table
+﻿from domain.models import Role, Table
 from tests.utils import build_db_url, build_services
 
 

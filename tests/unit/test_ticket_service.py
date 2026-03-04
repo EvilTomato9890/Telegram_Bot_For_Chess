@@ -1,4 +1,4 @@
-from domain.models import Role, TicketStatus, TicketType
+﻿from domain.models import Role, TicketStatus, TicketType
 from tests.utils import build_db_url, build_services
 import pytest
 

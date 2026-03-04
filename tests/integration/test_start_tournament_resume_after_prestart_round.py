@@ -1,10 +1,9 @@
-﻿import asyncio
+import asyncio
 from dataclasses import dataclass
-
-import pytest
 
 from bot.context import RouterContext
 from bot.routers.organizer import build_organizer_router
+from domain.models import Table, TournamentStatus
 from infra.config import AppConfig
 from infra.logging import setup_logging
 from tests.utils import ServiceBundle, build_db_url, build_services
@@ -59,47 +58,40 @@ def _build_context(db_url: str) -> tuple[RouterContext, ServiceBundle]:
     return context, services
 
 
-def test_add_table_place_hint_is_optional() -> None:
-    db_url = build_db_url("add_table_optional")
+def test_start_tournament_resumes_when_round_was_generated_prestart() -> None:
+    db_url = build_db_url("start_resume")
     context, services = _build_context(db_url)
     router = build_organizer_router(context)
-    handler = next(h.callback for h in router.message.handlers if h.callback.__name__ == "add_table_handler")
+    handler = next(h.callback for h in router.message.handlers if h.callback.__name__ == "start_tournament_handler")
 
-    services["tournament_service"].create_tournament()
-    message = _StubMessage(9001, "/add_table 1")
+    tournament_service = services["tournament_service"]
+    registration_service = services["registration_service"]
+    pairing_service = services["pairing_service"]
+    table_repo = services["table_repo"]
+
+    tournament_service.create_tournament()
+    table_repo.add(Table(id=None, number=1, location="A"))
+    table_repo.add(Table(id=None, number=2, location="B"))
+    tournament_service.open_registration()
+    tournament_service.set_round_number(2, confirm=True)
+    registration_service.register(8101, "u1", "A", 1600)
+    registration_service.register(8102, "u2", "B", 1550)
+    registration_service.register(8103, "u3", "C", 1500)
+    registration_service.register(8104, "u4", "D", 1450)
+    tournament_service.prepare_tournament()
+    pairing_service.prepare_next_round_preview(1, 9001)
+    pairing_service.generate_next_round(1, 9001, allow_prestart=True)
+
+    before_start = tournament_service.ensure_tournament()
+    assert before_start.status == TournamentStatus.REGISTRATION
+    assert before_start.current_round == 1
+    assert len(services["round_repo"].list_all()) == 1
+
+    message = _StubMessage(9001, "/start_tournament")
     asyncio.run(handler(message))
 
-    table = services["table_repo"].get_by_number(1)
-    assert table is not None
-    assert table.location == "Локация не указана"
-    assert table.place_hint is None
-
-
-def test_add_table_with_location() -> None:
-    db_url = build_db_url("add_table_place_hint")
-    context, services = _build_context(db_url)
-    router = build_organizer_router(context)
-    handler = next(h.callback for h in router.message.handlers if h.callback.__name__ == "add_table_handler")
-
-    services["tournament_service"].create_tournament()
-    message = _StubMessage(9001, "/add_table 2 Main Hall")
-    asyncio.run(handler(message))
-
-    table = services["table_repo"].get_by_number(2)
-    assert table is not None
-    assert table.location == "Main Hall"
-    assert table.place_hint is None
-
-
-def test_add_table_pipe_format_is_rejected() -> None:
-    db_url = build_db_url("add_table_place_hint_pipe")
-    context, services = _build_context(db_url)
-    router = build_organizer_router(context)
-    handler = next(h.callback for h in router.message.handlers if h.callback.__name__ == "add_table_handler")
-
-    services["tournament_service"].create_tournament()
-    message = _StubMessage(9001, "/add_table 2 Main | near window")
-    with pytest.raises(ValueError, match="Описание места удалено"):
-        asyncio.run(handler(message))
-
-    assert services["table_repo"].get_by_number(2) is None
+    started = tournament_service.ensure_tournament()
+    assert started.status == TournamentStatus.ONGOING
+    assert started.current_round == 1
+    assert len(services["round_repo"].list_all()) == 1
+    assert any("Тур 1:" in text for text in message.answers)

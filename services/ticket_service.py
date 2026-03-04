@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import UTC, datetime
+import sqlite3
 
 from domain.exceptions import DomainError
 from domain.models import Role, Ticket, TicketStatus, TicketType
@@ -40,20 +41,24 @@ class TicketService:
             raise DomainError("Описание тикета не может быть пустым.")
 
         target_role = Role.ARBITRATOR if ticket_type == TicketType.ARBITR else Role.ADMIN
-        assignee = self._select_assignee(target_role)
-        status = TicketStatus.ASSIGNED if assignee is not None else TicketStatus.OPEN
-        ticket = self._ticket_repo.add(
-            Ticket(
-                id=None,
-                ticket_type=ticket_type,
-                author_telegram_id=actor_id,
-                status=status,
-                assignee_telegram_id=assignee,
-                game_id=game_id,
-                description=normalized_description,
-                opened_at=datetime.now(UTC),
+        with self._ticket_repo.transaction() as connection:
+            # Lock write path early to avoid races in assignee balancing.
+            connection.execute("BEGIN IMMEDIATE")
+            assignee = self._select_assignee(target_role, connection=connection)
+            status = TicketStatus.ASSIGNED if assignee is not None else TicketStatus.OPEN
+            ticket = self._ticket_repo.add(
+                Ticket(
+                    id=None,
+                    ticket_type=ticket_type,
+                    author_telegram_id=actor_id,
+                    status=status,
+                    assignee_telegram_id=assignee,
+                    game_id=game_id,
+                    description=normalized_description,
+                    opened_at=datetime.now(UTC),
+                ),
+                connection=connection,
             )
-        )
         self._audit_logger.log_event(
             actor_id=actor_id,
             roles=[role.value for role in self._acl_service.resolve_roles(actor_id)],
@@ -66,7 +71,13 @@ class TicketService:
         )
         return ticket
 
-    def close_ticket(self, actor_id: int, ticket_id: int | None = None) -> Ticket:
+    def close_ticket(
+        self,
+        actor_id: int,
+        ticket_id: int | None = None,
+        *,
+        audit_command: str = "/close_ticket",
+    ) -> Ticket:
         """Close explicit ticket or actor's latest own open ticket."""
 
         actor_roles = self._acl_service.resolve_roles(actor_id)
@@ -97,7 +108,7 @@ class TicketService:
         self._audit_logger.log_event(
             actor_id=actor_id,
             roles=[role.value for role in actor_roles],
-            command="/close_ticket",
+            command=audit_command,
             entity=f"ticket:{stored.id}",
             before={"status": ticket.status.value},
             after={"status": stored.status.value},
@@ -120,15 +131,19 @@ class TicketService:
             )
         raise PermissionError("Недостаточно прав для просмотра очереди тикетов.")
 
-    def _select_assignee(self, role: Role) -> int | None:
+    def _select_assignee(self, role: Role, *, connection: sqlite3.Connection | None = None) -> int | None:
         candidates = self._acl_service.user_ids_with_role(role)
         if not candidates:
             return None
+        stats = {
+            candidate: self._ticket_repo.active_stats_for_assignee(candidate, connection=connection)
+            for candidate in candidates
+        }
         return min(
             candidates,
             key=lambda candidate: (
-                self._ticket_repo.active_stats_for_assignee(candidate)[0],
-                self._ticket_repo.active_stats_for_assignee(candidate)[1],
+                stats[candidate][0],
+                stats[candidate][1],
                 candidate,
             ),
         )

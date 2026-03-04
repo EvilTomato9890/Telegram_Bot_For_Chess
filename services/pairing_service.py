@@ -64,44 +64,61 @@ class PairingService:
             confirmation_reason=pending.confirmation_reason,
         )
 
-    def generate_next_round(self, tournament_id: int, actor_id: int, force: bool = False) -> PairingOutcome:
+    def prepare_round(self, tournament_id: int, actor_id: int) -> PairingOutcome:
+        """Prepare next round pairings without starting the round."""
+
+        del tournament_id, actor_id
+        tournament = self._require_ongoing_tournament()
+        self._validate_can_generate(tournament)
+        round_number = tournament.current_round + 1
+
+        pending = self._load_pending_payload(tournament)
+        if pending is None:
+            pending = self._build_pending_from_engine()
+            self._store_pending_payload(tournament, pending)
+
+        self._apply_preview_to_players(pending.games, pending.bye_player_id)
+        return PairingOutcome(
+            round_number=round_number,
+            games=tuple(self._preview_games_from_payload(pending.games)),
+            bye_player_id=pending.bye_player_id,
+            needs_confirmation=pending.needs_confirmation,
+            confirmation_reason=pending.confirmation_reason,
+        )
+
+    def generate_next_round(
+        self,
+        tournament_id: int,
+        actor_id: int,
+        force: bool = False,
+        *,
+        allow_prestart: bool = False,
+    ) -> PairingOutcome:
         """Generate next round pairings with optional forced repeats."""
 
         del tournament_id, actor_id  # Single-tournament mode.
-        tournament = self._require_ongoing_tournament()
+        tournament = self._require_generation_tournament(allow_prestart=allow_prestart)
         self._validate_can_generate(tournament)
 
         pending = self._load_pending_payload(tournament)
-        if pending is not None:
-            if pending.needs_confirmation and not force:
-                return PairingOutcome(
-                    round_number=tournament.current_round + 1,
-                    games=tuple(),
-                    bye_player_id=pending.bye_player_id,
-                    needs_confirmation=True,
-                    confirmation_reason=pending.confirmation_reason,
-                )
-            return self._persist_generated_round(
-                tournament=tournament,
-                pairing_data=pending.games,
-                bye_player_id=pending.bye_player_id,
-            )
+        if pending is None:
+            if tournament.status == TournamentStatus.REGISTRATION:
+                raise DomainError("Сначала выполните /prepare_tournament.")
+            raise DomainError("Сначала выполните /prepare_round.")
 
-        built = self._build_pending_from_engine()
-        if built.needs_confirmation and not force:
-            self._store_pending_payload(tournament, built)
+        if pending.needs_confirmation and not force:
             return PairingOutcome(
                 round_number=tournament.current_round + 1,
                 games=tuple(),
-                bye_player_id=built.bye_player_id,
+                bye_player_id=pending.bye_player_id,
                 needs_confirmation=True,
-                confirmation_reason=built.confirmation_reason,
+                confirmation_reason=pending.confirmation_reason,
             )
 
         return self._persist_generated_round(
             tournament=tournament,
-            pairing_data=built.games,
-            bye_player_id=built.bye_player_id,
+            pairing_data=pending.games,
+            bye_player_id=pending.bye_player_id,
         )
 
     def confirm_next_round(self, tournament_id: int, actor_id: int) -> PairingOutcome:
@@ -155,6 +172,21 @@ class PairingService:
         if tournament.status != TournamentStatus.ONGOING:
             raise DomainError("Генерация пар доступна только в ongoing.")
         return tournament
+
+    def _require_generation_tournament(self, *, allow_prestart: bool) -> Tournament:
+        tournament = self._tournament_repo.get()
+        if tournament is None:
+            raise DomainError("Турнир не создан.")
+        if tournament.status == TournamentStatus.ONGOING:
+            return tournament
+        if (
+            allow_prestart
+            and tournament.status == TournamentStatus.REGISTRATION
+            and tournament.prepared
+            and tournament.current_round == 0
+        ):
+            return tournament
+        raise DomainError("Генерация пар доступна только в ongoing.")
 
     def _require_prepared_registration_tournament(self) -> Tournament:
         tournament = self._tournament_repo.get()

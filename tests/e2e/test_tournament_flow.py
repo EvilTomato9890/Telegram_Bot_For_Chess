@@ -1,4 +1,4 @@
-from domain.models import Table, TournamentStatus
+﻿from domain.models import Table, TournamentStatus
 from tests.utils import build_db_url, build_services
 
 
@@ -8,8 +8,6 @@ def test_full_tournament_flow_registration_to_finish() -> None:
     registration_service = services["registration_service"]
     pairing_service = services["pairing_service"]
     result_service = services["result_service"]
-    round_repo = services["round_repo"]
-    game_repo = services["game_repo"]
 
     tournament_service.create_tournament()
     services["table_repo"].add(Table(id=None, number=1, location="A"))
@@ -24,6 +22,7 @@ def test_full_tournament_flow_registration_to_finish() -> None:
     tournament = tournament_service.start_tournament()
     assert tournament.status == TournamentStatus.ONGOING
 
+    pairing_service.prepare_round(1, 9001)
     round1 = pairing_service.generate_next_round(1, 9001)
     assert round1.round_number == 1
     for game in round1.games:
@@ -32,6 +31,7 @@ def test_full_tournament_flow_registration_to_finish() -> None:
         result_service.approve_result(game.id or 0, "1-0")
     tournament_service.end_current_round()
 
+    pairing_service.prepare_round(1, 9001)
     round2 = pairing_service.generate_next_round(1, 9001)
     for game in round2.games:
         if game.is_bye:

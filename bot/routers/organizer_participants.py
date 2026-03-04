@@ -1,4 +1,4 @@
-"""Admin handlers for participant roster and announcements."""
+﻿"""Admin handlers for participant roster and announcements."""
 
 from __future__ import annotations
 
@@ -61,15 +61,11 @@ def register_participant_handlers(router: Router, shared: OrganizerShared) -> No
         if shared.player_repo.get_by_telegram_id(telegram_id) is not None:
             raise DomainError("Игрок с таким telegram_id уже существует.")
 
-        player = shared.run_with_snapshot(
-            actor,
-            "/add_player",
-            lambda: shared.registration_service.add_player_by_admin(
-                telegram_id=telegram_id,
-                username=username,
-                full_name=full_name,
-                rating=rating,
-            ),
+        player = shared.registration_service.add_player_by_admin(
+            telegram_id=telegram_id,
+            username=username,
+            full_name=full_name,
+            rating=rating,
         )
         shared.log_ok(actor, "/add_player", f"player:{player.id}", {"telegram_id": player.telegram_id, "rating": player.rating})
         await message.answer(f"Игрок добавлен: #{player.id} {player.full_name}, рейтинг {player.rating}.")
@@ -86,11 +82,7 @@ def register_participant_handlers(router: Router, shared: OrganizerShared) -> No
             raise DomainError("Удалять игрока можно только до старта турнира.")
         if shared.player_repo.get_by_id(player_id) is None:
             raise DomainError("Игрок не найден.")
-        deleted = shared.run_with_snapshot(
-            actor,
-            "/delete_player",
-            lambda: shared.registration_service.delete_player_by_admin(player_id),
-        )
+        deleted = shared.registration_service.delete_player_by_admin(player_id)
         shared.log_ok(actor, "/delete_player", f"player:{player_id}", {"deleted": True, "full_name": deleted.full_name})
         await message.answer(f"Игрок удален: #{player_id} {deleted.full_name}.")
 
@@ -106,11 +98,7 @@ def register_participant_handlers(router: Router, shared: OrganizerShared) -> No
             raise DomainError("Игрок не найден.")
         if player.status == PlayerStatus.DISQUALIFIED:
             raise DomainError("Игрок уже дисквалифицирован.")
-        updated = shared.run_with_snapshot(
-            actor,
-            "/disqualify",
-            lambda: shared.registration_service.disqualify(player_id),
-        )
+        updated = shared.registration_service.disqualify(player_id)
         shared.log_ok(actor, "/disqualify", f"player:{updated.id}", {"status": updated.status.value})
         await message.answer(f"Игрок {updated.full_name} дисквалифицирован.")
 
@@ -143,10 +131,6 @@ def register_participant_handlers(router: Router, shared: OrganizerShared) -> No
         if player.rating == rating:
             await message.answer(f"Рейтинг игрока {player.full_name} уже равен {rating}.")
             return
-        updated = shared.run_with_snapshot(
-            actor,
-            "/set_player_rating",
-            lambda: shared.registration_service.set_rating(player_id, rating),
-        )
+        updated = shared.registration_service.set_rating(player_id, rating)
         shared.log_ok(actor, "/set_player_rating", f"player:{updated.id}", {"rating": updated.rating})
         await message.answer(f"Новый рейтинг игрока {updated.full_name}: {updated.rating}")

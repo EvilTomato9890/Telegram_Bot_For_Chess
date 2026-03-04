@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+﻿from datetime import UTC, datetime
 
 from domain.models import Game, GameResult, Player, Round, RoundStatus, Table, TournamentStatus
 from tests.utils import build_db_url, build_services
@@ -39,9 +39,9 @@ def test_confirm_next_round_uses_stored_payload_without_recalculation() -> None:
         )
     )
 
-    # Request next round and require confirmation (unavoidable rematch).
-    outcome = pairing_service.generate_next_round(1, 9001, force=False)
-    assert outcome.needs_confirmation is True
+    # Prepare next round and require confirmation (unavoidable rematch).
+    prepared = pairing_service.prepare_round(1, 9001)
+    assert prepared.needs_confirmation is True
 
     # Remove all tables; direct recomputation would now fail by insufficient tables.
     for table in table_repo.list_all():

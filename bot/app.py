@@ -29,7 +29,6 @@ from repositories import (
     TableRepository,
     TicketRepository,
     TournamentRepository,
-    UndoRepository,
     init_db,
 )
 from services import (
@@ -42,7 +41,6 @@ from services import (
     ScoringService,
     TicketService,
     TournamentService,
-    UndoService,
 )
 
 
@@ -61,7 +59,6 @@ class Container:
     table_repo: TableRepository
     ticket_repo: TicketRepository
     role_repo: RoleGrantRepository
-    undo_repo: UndoRepository
     acl_service: AccessControlService
     notification_gateway: NotificationGateway
     notification_service: NotificationService
@@ -71,7 +68,6 @@ class Container:
     pairing_service: PairingService
     result_service: ResultService
     ticket_service: TicketService
-    undo_service: UndoService
 
     def as_context(self) -> RouterContext:
         """Typed context object used by routers."""
@@ -88,7 +84,6 @@ class Container:
             pairing_service=self.pairing_service,
             result_service=self.result_service,
             ticket_service=self.ticket_service,
-            undo_service=self.undo_service,
             player_repo=self.player_repo,
             round_repo=self.round_repo,
             game_repo=self.game_repo,
@@ -193,7 +188,6 @@ def create_container(dotenv_path: str | Path | None = None) -> Container:
     table_repo = TableRepository(database)
     ticket_repo = TicketRepository(database)
     role_repo = RoleGrantRepository(database)
-    undo_repo = UndoRepository(database)
 
     acl_service = AccessControlService(
         admin_ids=set(config.admin_ids),
@@ -241,12 +235,6 @@ def create_container(dotenv_path: str | Path | None = None) -> Container:
         acl_service=acl_service,
         audit_logger=audit_logger,
     )
-    undo_service = UndoService(
-        database=database,
-        undo_repo=undo_repo,
-        acl_service=acl_service,
-        audit_logger=audit_logger,
-    )
 
     tournament_service.ensure_tournament()
 
@@ -262,7 +250,6 @@ def create_container(dotenv_path: str | Path | None = None) -> Container:
         table_repo=table_repo,
         ticket_repo=ticket_repo,
         role_repo=role_repo,
-        undo_repo=undo_repo,
         acl_service=acl_service,
         notification_gateway=notification_gateway,
         notification_service=notification_service,
@@ -272,7 +259,6 @@ def create_container(dotenv_path: str | Path | None = None) -> Container:
         pairing_service=pairing_service,
         result_service=result_service,
         ticket_service=ticket_service,
-        undo_service=undo_service,
     )
 
 

@@ -1,4 +1,4 @@
-"""Admin handlers for tournament lifecycle and reporting."""
+﻿"""Admin handlers for tournament lifecycle and reporting."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from domain.dto import PairingOutcome
 from domain.exceptions import DomainError, RoundsExhaustedError
 from domain.models import PlayerStatus, TournamentStatus
 
@@ -21,7 +22,7 @@ def register_tournament_handlers(router: Router, shared: OrganizerShared) -> Non
         text = (message.text or "").removeprefix("/set_rules").strip()
         if not text:
             raise DomainError("Формат: /set_rules <текст>")
-        shared.run_with_snapshot(actor, "/set_rules", lambda: shared.tournament_service.set_rules(text))
+        shared.tournament_service.set_rules(text)
         shared.log_ok(actor, "/set_rules", "tournament:1", {"rules_updated": True})
         await shared.notify_players(message, lambda _: f"Обновлены правила турнира:\n{text}")
         await message.answer("Правила обновлены.")
@@ -32,7 +33,7 @@ def register_tournament_handlers(router: Router, shared: OrganizerShared) -> Non
         parts = (message.text or "").split()
         if len(parts) != 1:
             raise DomainError("Формат: /create_tournament")
-        tournament = shared.run_with_snapshot(actor, "/create_tournament", shared.tournament_service.create_tournament)
+        tournament = shared.tournament_service.create_tournament()
         shared.log_ok(actor, "/create_tournament", "tournament:1", {"status": tournament.status.value})
         await message.answer("Турнир создан в статусе draft. Добавьте столы через /add_table.")
 
@@ -40,7 +41,7 @@ def register_tournament_handlers(router: Router, shared: OrganizerShared) -> Non
     async def open_registration_handler(message: Message) -> None:
         actor = shared.admin_check(message, "/open_registration")
         shared.tournament_service.validate_open_registration()
-        tournament = shared.run_with_snapshot(actor, "/open_registration", shared.tournament_service.open_registration)
+        tournament = shared.tournament_service.open_registration()
         shared.log_ok(actor, "/open_registration", "tournament:1", {"status": tournament.status.value})
         await message.answer(f"Регистрация открыта. Статус: {tournament.status.value}.")
 
@@ -53,11 +54,7 @@ def register_tournament_handlers(router: Router, shared: OrganizerShared) -> Non
         rounds = shared.parse_int(parts[1], field="число туров")
         confirm = len(parts) > 2 and parts[2].lower() == "confirm"
         shared.tournament_service.validate_set_round_number(rounds, confirm=confirm)
-        tournament, recommendation = shared.run_with_snapshot(
-            actor,
-            "/set_round_number",
-            lambda: shared.tournament_service.set_round_number(rounds, confirm=confirm),
-        )
+        tournament, recommendation = shared.tournament_service.set_round_number(rounds, confirm=confirm)
         shared.log_ok(actor, "/set_round_number", "tournament:1", {"number_of_rounds": tournament.number_of_rounds})
         await message.answer(
             f"Число туров установлено: {tournament.number_of_rounds}. Рекомендация системы: {recommendation}."
@@ -70,7 +67,7 @@ def register_tournament_handlers(router: Router, shared: OrganizerShared) -> Non
         if problems:
             raise DomainError("Подготовка невозможна:\n- " + "\n- ".join(problems))
 
-        shared.run_with_snapshot(actor, "/prepare_tournament", shared.tournament_service.prepare_tournament)
+        shared.tournament_service.prepare_tournament()
         preview = shared.pairing_service.prepare_next_round_preview(1, actor)
         shared.log_ok(
             actor,
@@ -99,8 +96,37 @@ def register_tournament_handlers(router: Router, shared: OrganizerShared) -> Non
     async def start_tournament_handler(message: Message) -> None:
         actor = shared.admin_check(message, "/start_tournament")
         shared.tournament_service.validate_start_tournament()
-        shared.run_with_snapshot(actor, "/start_tournament", shared.tournament_service.start_tournament)
-        outcome = shared.pairing_service.generate_next_round(1, actor, force=False)
+        tournament = shared.tournament_service.ensure_tournament()
+        if tournament.current_round > 0:
+            round_ = shared.round_repo.get_by_number(tournament.current_round)
+            if round_ is None or round_.id is None:
+                raise DomainError("Не удалось найти уже сгенерированный тур для старта турнира.")
+            games = tuple(shared.game_repo.list_by_round(round_.id))
+            shared.tournament_service.start_tournament()
+            shared.log_ok(
+                actor,
+                "/start_tournament",
+                "tournament:1",
+                {"status": "ongoing", "round": tournament.current_round, "resumed": True},
+            )
+            await shared.notify_players(
+                message,
+                lambda _: f"Турнир начался. Стартует тур {tournament.current_round}.",
+                include_disqualified=False,
+            )
+            await message.answer("\n".join(shared.render_round_games(tournament.current_round, games)))
+            return
+        if not tournament.pending_pairing_payload:
+            # Defensive preflight: ensure there is pending payload for first round.
+            shared.pairing_service.prepare_next_round_preview(1, actor)
+
+        outcome: PairingOutcome = shared.pairing_service.generate_next_round(
+            1,
+            actor,
+            force=False,
+            allow_prestart=True,
+        )
+        shared.tournament_service.start_tournament()
         if outcome.needs_confirmation:
             shared.log_ok(actor, "/start_tournament", "tournament:1", {"status": "ongoing", "needs_confirmation": True})
             await message.answer(
@@ -162,8 +188,7 @@ def register_tournament_handlers(router: Router, shared: OrganizerShared) -> Non
             lines.append("- нет")
         else:
             for table in tables:
-                place = f", место: {table.place_hint}" if table.place_hint else ""
-                lines.append(f"- {table.number}: {table.location}{place}")
+                lines.append(f"- {table.number}: {table.location}")
 
         lines.extend(["", "Текущее размещение:"])
         placements = [
@@ -197,7 +222,7 @@ def register_tournament_handlers(router: Router, shared: OrganizerShared) -> Non
         if not shared.validate_end_round_precheck():
             await message.answer("Текущий тур уже закрыт.")
             return
-        shared.run_with_snapshot(actor, "/end_round", shared.tournament_service.end_current_round)
+        shared.tournament_service.end_current_round()
         shared.log_ok(actor, "/end_round", "round:current", {"closed": True})
 
         tournament = shared.tournament_service.ensure_tournament()
@@ -212,6 +237,45 @@ def register_tournament_handlers(router: Router, shared: OrganizerShared) -> Non
             include_disqualified=False,
         )
         await message.answer("Текущий тур закрыт.")
+
+    @router.message(Command("prepare_round"))
+    async def prepare_round_handler(message: Message) -> None:
+        actor = shared.admin_check(message, "/prepare_round")
+        try:
+            outcome = shared.pairing_service.prepare_round(1, actor)
+        except RoundsExhaustedError as exc:
+            await shared.notify_admins(message, "Все запланированные туры завершены. Можно выполнить /finish_tournament.")
+            raise DomainError("Туры завершены. Выполните /finish_tournament.") from exc
+
+        shared.log_ok(
+            actor,
+            "/prepare_round",
+            f"round:{outcome.round_number}",
+            {"prepared": True, "games": len(outcome.games), "needs_confirmation": outcome.needs_confirmation},
+        )
+        preview_map = shared.preview_messages_by_player(
+            outcome.games,
+            outcome.bye_player_id,
+            round_number=outcome.round_number,
+            intro="Подготовка",
+        )
+        await shared.notify_players(
+            message,
+            lambda player: preview_map.get(
+                player.id or 0,
+                f"Подготовка тура {outcome.round_number}: ожидайте назначение.",
+            ),
+            include_disqualified=False,
+        )
+        response = f"Тур {outcome.round_number} подготовлен. Участникам отправлены новые места."
+        if outcome.needs_confirmation:
+            response += (
+                f"\nБез повторов пары не собрать: {outcome.confirmation_reason}\n"
+                "Для старта тура используйте /confirm_next_round."
+            )
+        else:
+            response += "\nДля запуска тура выполните /next_round."
+        await message.answer(response)
 
     @router.message(Command("next_round"))
     async def next_round_handler(message: Message) -> None:
@@ -230,11 +294,7 @@ def register_tournament_handlers(router: Router, shared: OrganizerShared) -> Non
             return
 
         try:
-            outcome = shared.run_with_snapshot(
-                actor,
-                "/next_round",
-                lambda: shared.pairing_service.generate_next_round(1, actor, force=False),
-            )
+            outcome = shared.pairing_service.generate_next_round(1, actor, force=False)
         except RoundsExhaustedError as exc:
             await shared.notify_admins(message, "Все запланированные туры завершены. Можно выполнить /finish_tournament.")
             raise DomainError("Туры завершены. Выполните /finish_tournament.") from exc
@@ -255,11 +315,7 @@ def register_tournament_handlers(router: Router, shared: OrganizerShared) -> Non
     async def confirm_next_round_handler(message: Message) -> None:
         actor = shared.admin_check(message, "/confirm_next_round")
         shared.pairing_service.validate_confirm_next_round(1, actor)
-        outcome = shared.run_with_snapshot(
-            actor,
-            "/confirm_next_round",
-            lambda: shared.pairing_service.confirm_next_round(1, actor),
-        )
+        outcome = shared.pairing_service.confirm_next_round(1, actor)
         shared.log_ok(actor, "/confirm_next_round", f"round:{outcome.round_number}", {"forced": True})
         await shared.notify_players(
             message,
@@ -298,7 +354,7 @@ def register_tournament_handlers(router: Router, shared: OrganizerShared) -> Non
     async def finish_tournament_handler(message: Message) -> None:
         actor = shared.admin_check(message, "/finish_tournament")
         shared.tournament_service.validate_finish_tournament()
-        shared.run_with_snapshot(actor, "/finish_tournament", shared.tournament_service.finish_tournament)
+        shared.tournament_service.finish_tournament()
         shared.log_ok(actor, "/finish_tournament", "tournament:1", {"status": "finished"})
         standings = shared.scoring_service.recalculate()
         positions = {row.telegram_id: row.position for row in standings}
@@ -308,16 +364,4 @@ def register_tournament_handlers(router: Router, shared: OrganizerShared) -> Non
         )
         top_lines = [f"{row.position}. {row.full_name} - {row.score}" for row in standings]
         await message.answer("Турнир завершен.\n" + "\n".join(top_lines))
-
-    @router.message(Command("undo_last_action"))
-    async def undo_last_action_handler(message: Message) -> None:
-        actor = shared.admin_check(message, "/undo_last_action")
-        undone = shared.undo_service.undo_last_admin_action(actor)
-        shared.log_ok(
-            actor,
-            "/undo_last_action",
-            f"undo:{undone.snapshot_id}",
-            {"restored": True, "undone_action": undone.undone_action},
-        )
-        await message.answer(f"Отменено действие: {undone.undone_action}.")
 

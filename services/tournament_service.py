@@ -210,7 +210,7 @@ class TournamentService:
             TournamentStatus.ONGOING,
             prepared=True,
             number_of_rounds=tournament.number_of_rounds,
-            current_round=0,
+            current_round=tournament.current_round,
             rules_text=tournament.rules_text,
             pending_pairing_payload=tournament.pending_pairing_payload,
         )
@@ -293,4 +293,3 @@ class TournamentService:
 
     def _count_disqualified_players(self) -> int:
         return sum(1 for player in self._player_repo.list_all() if player.status == PlayerStatus.DISQUALIFIED)
-

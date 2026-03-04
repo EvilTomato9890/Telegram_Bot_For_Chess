@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 from dataclasses import dataclass
 
 from bot.context import RouterContext
@@ -34,7 +34,7 @@ def test_tournament_status_shows_active_and_disqualified_sections() -> None:
     table_repo = services["table_repo"]
 
     tournament_service.create_tournament()
-    table_repo.add(Table(id=None, number=1, location="A", place_hint="у окна"))
+    table_repo.add(Table(id=None, number=1, location="A", place_hint="Сѓ РѕРєРЅР°"))
     tournament_service.open_registration()
     p1 = registration.register(7001, "u1", "Active User", 1500)
     p2 = registration.register(7002, "u2", "DQ User", 1400)
@@ -61,7 +61,6 @@ def test_tournament_status_shows_active_and_disqualified_sections() -> None:
         pairing_service=services["pairing_service"],
         result_service=services["result_service"],
         ticket_service=services["ticket_service"],
-        undo_service=services["undo_service"],
         player_repo=services["player_repo"],
         round_repo=services["round_repo"],
         game_repo=services["game_repo"],

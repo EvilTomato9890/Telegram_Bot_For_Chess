@@ -1,4 +1,4 @@
-"""Admin handlers for tournament tables."""
+﻿"""Admin handlers for tournament tables."""
 
 from __future__ import annotations
 
@@ -24,8 +24,7 @@ def register_table_handlers(router: Router, shared: OrganizerShared) -> None:
             return
         lines = []
         for table in tables:
-            place = f", место: {table.place_hint}" if table.place_hint else ""
-            lines.append(f"Стол {table.number}: {table.location}{place}")
+            lines.append(f"Стол {table.number}: {table.location}")
         await message.answer("\n".join(lines))
 
     @router.message(Command("add_table"))
@@ -33,31 +32,21 @@ def register_table_handlers(router: Router, shared: OrganizerShared) -> None:
         actor = shared.admin_check(message, "/add_table")
         payload = (message.text or "").removeprefix("/add_table").strip()
         if not payload:
-            raise DomainError("Формат: /add_table <номер> <локация> [| <описание места>]")
-
-        left = payload
-        right: str | None = None
+            raise DomainError("Формат: /add_table <номер> [локация]")
         if "|" in payload:
-            left, right = payload.split("|", maxsplit=1)
-        left_parts = left.strip().split(maxsplit=1)
-        if len(left_parts) != 2:
-            raise DomainError("Формат: /add_table <номер> <локация> [| <описание места>]")
+            raise DomainError("Описание места удалено. Используйте: /add_table <номер> [локация]")
 
-        number = shared.parse_int(left_parts[0], field="номер стола")
+        parts = payload.split(maxsplit=1)
+        number = shared.parse_int(parts[0], field="номер стола")
         if shared.table_repo.get_by_number(number) is not None:
             raise DomainError("Стол с таким номером уже существует.")
 
-        location = left_parts[1].strip()
+        location = parts[1].strip() if len(parts) > 1 else "Локация не указана"
         if not location:
-            raise DomainError("Локация стола не может быть пустой.")
-        place_hint = right.strip() if right is not None and right.strip() else None
+            location = "Локация не указана"
 
-        shared.run_with_snapshot(
-            actor,
-            "/add_table",
-            lambda: shared.table_repo.add(Table(id=None, number=number, location=location, place_hint=place_hint)),
-        )
-        shared.log_ok(actor, "/add_table", f"table:{number}", {"location": location, "place_hint": place_hint or ""})
+        shared.table_repo.add(Table(id=None, number=number, location=location, place_hint=None))
+        shared.log_ok(actor, "/add_table", f"table:{number}", {"location": location})
         await message.answer(f"Стол {number} добавлен.")
 
     @router.message(Command("remove_table"))
@@ -77,13 +66,10 @@ def register_table_handlers(router: Router, shared: OrganizerShared) -> None:
                 if game.board_number == number:
                     raise DomainError("Нельзя удалить стол: он используется в текущем туре.")
 
-        removed = shared.run_with_snapshot(
-            actor,
-            "/remove_table",
-            lambda: shared.table_repo.remove_by_number(number),
-        )
+        removed = shared.table_repo.remove_by_number(number)
         if not removed:
             raise DomainError("Стол не найден.")
         shared.log_ok(actor, "/remove_table", f"table:{number}", {"removed": True})
         await message.answer(f"Стол {number} удален.")
+
 

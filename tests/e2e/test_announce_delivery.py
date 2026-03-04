@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 from dataclasses import dataclass
 
 from bot.context import RouterContext
@@ -67,7 +67,6 @@ def test_announce_sends_message_to_all_registered_players() -> None:
         pairing_service=services["pairing_service"],
         result_service=services["result_service"],
         ticket_service=services["ticket_service"],
-        undo_service=services["undo_service"],
         player_repo=services["player_repo"],
         round_repo=services["round_repo"],
         game_repo=services["game_repo"],
@@ -76,7 +75,7 @@ def test_announce_sends_message_to_all_registered_players() -> None:
     router = build_organizer_router(context)
     handler = next(h.callback for h in router.message.handlers if h.callback.__name__ == "announce_handler")
 
-    message = _StubMessage(9001, "/announce Тестовое объявление")
+    message = _StubMessage(9001, "/announce РўРµСЃС‚РѕРІРѕРµ РѕР±СЉСЏРІР»РµРЅРёРµ")
     asyncio.run(handler(message))
 
     assert message.answers

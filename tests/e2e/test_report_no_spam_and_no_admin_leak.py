@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -96,7 +96,6 @@ def test_report_callback_does_not_spam_or_leak_admin_messages() -> None:
         pairing_service=services["pairing_service"],
         result_service=services["result_service"],
         ticket_service=services["ticket_service"],
-        undo_service=services["undo_service"],
         player_repo=services["player_repo"],
         round_repo=services["round_repo"],
         game_repo=services["game_repo"],

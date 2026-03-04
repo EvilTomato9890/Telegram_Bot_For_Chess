@@ -1,10 +1,9 @@
-"""Shared helpers for admin (organizer) command routers."""
+﻿"""Shared helpers for admin (organizer) command routers."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TypeVar
 
 from aiogram.types import Message
 
@@ -20,11 +19,7 @@ from services import (
     RegistrationService,
     ScoringService,
     TournamentService,
-    UndoService,
 )
-
-_T = TypeVar("_T")
-
 
 @dataclass(slots=True, frozen=True)
 class OrganizerShared:
@@ -35,7 +30,6 @@ class OrganizerShared:
     tournament_service: TournamentService
     pairing_service: PairingService
     scoring_service: ScoringService
-    undo_service: UndoService
     player_repo: PlayerRepository
     round_repo: RoundRepository
     game_repo: GameRepository
@@ -81,18 +75,6 @@ class OrganizerShared:
             return int(raw)
         except ValueError as exc:
             raise DomainError(f"{field} должен быть числом.") from exc
-
-    def _take_snapshot(self, actor: int, command: str) -> int:
-        snapshot = self.undo_service.snapshot(actor, command)
-        if snapshot.id is None:
-            raise DomainError("Не удалось сохранить undo-снапшот.")
-        return snapshot.id
-
-    def run_with_snapshot(self, actor: int, command: str, mutate: Callable[[], _T]) -> _T:
-        """Execute mutation under snapshot protection."""
-
-        self._take_snapshot(actor, command)
-        return mutate()
 
     async def notify_players(
         self,
@@ -168,9 +150,13 @@ class OrganizerShared:
         self,
         preview_games: tuple[Game, ...],
         bye_player_id: int | None,
+        *,
+        round_number: int | None = None,
+        intro: str = "Предварительная информация",
     ) -> dict[int, str]:
-        """Build per-player preview messages for prepared tournament."""
+        """Build per-player preview messages for prepared/current round."""
 
+        round_suffix = f" тура {round_number}" if round_number is not None else ""
         messages: dict[int, str] = {}
         for game in preview_games:
             table = self.table_repo.get_by_number(game.board_number)
@@ -180,19 +166,22 @@ class OrganizerShared:
             white_name = white.full_name if white is not None else f"id={game.white_player_id}"
             black_name = black.full_name if black is not None else f"id={game.black_player_id}"
             messages[game.white_player_id] = (
-                f"Предварительная информация: стол {game.board_number}, цвет White, "
+                f"{intro}{round_suffix}: стол {game.board_number}, цвет White, "
                 f"соперник {black_name}, локация: {location}"
             )
             messages[game.black_player_id] = (
-                f"Предварительная информация: стол {game.board_number}, цвет Black, "
+                f"{intro}{round_suffix}: стол {game.board_number}, цвет Black, "
                 f"соперник {white_name}, локация: {location}"
             )
         if bye_player_id is not None:
-            messages[bye_player_id] = "Предварительная информация: в первом туре у вас bye (1 очко)."
+            if round_number is None:
+                messages[bye_player_id] = f"{intro}: в туре у вас bye (1 очко)."
+            else:
+                messages[bye_player_id] = f"{intro} тура {round_number}: в этом туре у вас bye (1 очко)."
         return messages
 
     def validate_end_round_precheck(self) -> bool:
-        """Validate /end_round before snapshot; return False when round is already closed."""
+        """Validate /end_round before mutation; return False when round is already closed."""
 
         current = self.round_repo.get_current()
         if current is None:
@@ -215,4 +204,3 @@ class OrganizerShared:
         if not games or any(game.result is None for game in games):
             raise DomainError("Нельзя закрыть тур: не все результаты зафиксированы.")
         return True
-

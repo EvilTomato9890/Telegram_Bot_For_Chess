@@ -1,4 +1,4 @@
-import pytest
+﻿import pytest
 
 from domain.models import Table
 from tests.utils import build_db_url, build_services
@@ -39,6 +39,6 @@ def test_prepare_stage_exposes_preview_but_blocks_report() -> None:
     assert p1_after.seat_hint is not None
     assert p2_after.seat_hint is not None
 
-    with pytest.raises(ValueError, match="Нет активной партии для /report."):
+    with pytest.raises(ValueError, match=r"Нет активной партии для /report\."):
         result_service.ensure_reportable_game(8101)
 

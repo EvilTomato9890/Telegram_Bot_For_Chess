@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from domain.exceptions import DomainError
 
 from datetime import UTC, datetime
 import sqlite3
+from typing import Iterator
 
 from domain.models import Ticket, TicketStatus, TicketType
 from infra.db import Database
@@ -18,6 +20,13 @@ class TicketRepository:
 
     def __init__(self, database: Database) -> None:
         self._database = database
+
+    @contextmanager
+    def transaction(self) -> Iterator[sqlite3.Connection]:
+        """Expose DB transaction scope for compound ticket operations."""
+
+        with self._database.transaction() as conn:
+            yield conn
 
     def add(self, ticket: Ticket, connection: sqlite3.Connection | None = None) -> Ticket:
         sql = """

@@ -16,7 +16,6 @@ from services import (
     ScoringService,
     TicketService,
     TournamentService,
-    UndoService,
 )
 
 
@@ -34,7 +33,6 @@ class RouterContext:
     pairing_service: PairingService
     result_service: ResultService
     ticket_service: TicketService
-    undo_service: UndoService
     player_repo: PlayerRepository
     round_repo: RoundRepository
     game_repo: GameRepository

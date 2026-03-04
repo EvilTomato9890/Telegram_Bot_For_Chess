@@ -1,4 +1,4 @@
-"""Test helper utilities."""
+﻿"""Test helper utilities."""
 
 from __future__ import annotations
 
@@ -17,7 +17,6 @@ from repositories import (
     TableRepository,
     TicketRepository,
     TournamentRepository,
-    UndoRepository,
     init_db,
 )
 from services import (
@@ -29,7 +28,6 @@ from services import (
     ScoringService,
     TicketService,
     TournamentService,
-    UndoService,
 )
 
 
@@ -45,7 +43,6 @@ class ServiceBundle(TypedDict):
     table_repo: TableRepository
     ticket_repo: TicketRepository
     role_repo: RoleGrantRepository
-    undo_repo: UndoRepository
     acl_service: AccessControlService
     notification_service: NotificationService
     scoring_service: ScoringService
@@ -54,7 +51,6 @@ class ServiceBundle(TypedDict):
     pairing_service: PairingService
     result_service: ResultService
     ticket_service: TicketService
-    undo_service: UndoService
 
 
 def build_db_url(prefix: str = "test") -> str:
@@ -78,7 +74,6 @@ def build_services(db_url: str) -> ServiceBundle:
     table_repo = TableRepository(database)
     ticket_repo = TicketRepository(database)
     role_repo = RoleGrantRepository(database)
-    undo_repo = UndoRepository(database)
 
     acl_service = AccessControlService(
         admin_ids={9001},
@@ -121,12 +116,6 @@ def build_services(db_url: str) -> ServiceBundle:
         acl_service=acl_service,
         audit_logger=setup_logging(audit_log_path="logs/test_audit.log"),
     )
-    undo_service = UndoService(
-        database=database,
-        undo_repo=undo_repo,
-        acl_service=acl_service,
-        audit_logger=setup_logging(audit_log_path="logs/test_audit.log"),
-    )
     tournament_service.ensure_tournament()
     return {
         "database": database,
@@ -138,7 +127,6 @@ def build_services(db_url: str) -> ServiceBundle:
         "table_repo": table_repo,
         "ticket_repo": ticket_repo,
         "role_repo": role_repo,
-        "undo_repo": undo_repo,
         "acl_service": acl_service,
         "notification_service": notification_service,
         "scoring_service": scoring_service,
@@ -147,5 +135,4 @@ def build_services(db_url: str) -> ServiceBundle:
         "pairing_service": pairing_service,
         "result_service": result_service,
         "ticket_service": ticket_service,
-        "undo_service": undo_service,
     }

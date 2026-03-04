@@ -1,5 +1,4 @@
-import sqlite3
-from pathlib import Path
+﻿import sqlite3
 
 from repositories import init_db
 from tests.utils import build_db_url

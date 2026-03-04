@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 from dataclasses import dataclass
 
 from bot.context import RouterContext
@@ -79,7 +79,6 @@ def test_unregistered_user_enters_register_flow_when_registration_open() -> None
         pairing_service=services["pairing_service"],
         result_service=services["result_service"],
         ticket_service=services["ticket_service"],
-        undo_service=services["undo_service"],
         player_repo=services["player_repo"],
         round_repo=services["round_repo"],
         game_repo=services["game_repo"],

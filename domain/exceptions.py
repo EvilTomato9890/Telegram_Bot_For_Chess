@@ -33,3 +33,12 @@ class AccessDeniedError(DomainError):
 
 class RoundsExhaustedError(StateError):
     """Raised when configured number of rounds is already reached."""
+
+
+class OrganizerConfirmationRequiredError(StateError):
+    """Raised when retroactive result change needs organizer confirmation."""
+
+    def __init__(self, game_id: int, raw_result: str) -> None:
+        super().__init__("Требуется подтверждение организатора.")
+        self.game_id = game_id
+        self.raw_result = raw_result

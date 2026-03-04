@@ -262,6 +262,19 @@ class TournamentService:
             pending_pairing_payload=None,
         )
 
+    def force_finish_tournament(self) -> Tournament:
+        """Force tournament finish without procedural validations."""
+
+        tournament = self.ensure_tournament()
+        return self._tournament_repo.update_status(
+            TournamentStatus.FINISHED,
+            prepared=tournament.prepared,
+            number_of_rounds=tournament.number_of_rounds,
+            current_round=tournament.current_round,
+            rules_text=tournament.rules_text,
+            pending_pairing_payload=None,
+        )
+
     def status_summary(self) -> dict[str, object]:
         """Build human-readable tournament status payload."""
 

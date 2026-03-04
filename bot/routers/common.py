@@ -14,7 +14,7 @@ from aiogram.types import CallbackQuery, Message
 from bot.context import RouterContext
 from domain.dto import CommandSpec
 from domain.exceptions import DomainError
-from domain.models import TicketType, TournamentStatus
+from domain.models import Role, TicketType, TournamentStatus
 from keyboards import player_menu_keyboard, report_keyboard, start_keyboard
 
 
@@ -53,6 +53,13 @@ def build_common_router(context: RouterContext) -> Router:
             return True
         except Exception:  # noqa: BLE001
             return False
+
+    async def notify_admins_round_ready(bot: Bot | None, round_number: int | None) -> None:
+        if round_number is None:
+            return
+        text = f"Все партии тура {round_number} завершены. Можно выполнять /end_round."
+        for admin_id in acl.user_ids_with_role(Role.ADMIN):
+            await notify_user(bot, admin_id, text)
 
     @router.message(Command("start"))
     async def start_handler(message: Message) -> None:
@@ -330,6 +337,8 @@ def build_common_router(context: RouterContext) -> Router:
                 f"Вы выбрали: {chosen.value}\nИгра {outcome.game_id}: {outcome.message}{extra_hint}"
             )
             await _notify_report_peers(callback, outcome)
+            if outcome.status == "agreed" and outcome.round_closed:
+                await notify_admins_round_ready(callback.message.bot, outcome.round_number)
         await callback.answer()
 
     async def _notify_report_peers(callback: CallbackQuery, outcome: object) -> None:

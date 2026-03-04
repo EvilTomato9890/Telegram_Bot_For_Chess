@@ -65,6 +65,12 @@ COMMAND_REGISTRY: tuple[CommandSpec, ...] = (
     CommandSpec("/confirm_next_round", frozenset({Role.ADMIN}), "Подтвердить генерацию с повторами", "Турнир"),
     CommandSpec("/round", frozenset({Role.ADMIN}), "Пары/результаты тура", "Турнир"),
     CommandSpec("/finish_tournament", frozenset({Role.ADMIN}), "Завершить турнир", "Турнир"),
+    CommandSpec(
+        "/force_finish_tournament",
+        frozenset({Role.ADMIN}),
+        "Принудительно завершить турнир (без обязательных проверок)",
+        "Турнир",
+    ),
 )
 
 

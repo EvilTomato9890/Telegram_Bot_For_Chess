@@ -46,6 +46,7 @@ class ApproveOutcome:
     round_closed: bool = False
     round_number: int | None = None
     next_round_hint: str | None = None
+    reseed_required: bool = False
 
 
 @dataclass(frozen=True, slots=True)

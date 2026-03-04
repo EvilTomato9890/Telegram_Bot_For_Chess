@@ -86,6 +86,32 @@ class PairingService:
             confirmation_reason=pending.confirmation_reason,
         )
 
+    def rebuild_prepared_round(self, tournament_id: int, actor_id: int) -> PairingOutcome:
+        """Recalculate already prepared next round payload after retroactive result change."""
+
+        del tournament_id, actor_id
+        tournament = self._require_ongoing_tournament()
+        self._validate_can_generate(tournament)
+        if tournament.pending_pairing_payload is None:
+            raise DomainError("Нет подготовленного следующего тура для пересборки.")
+
+        self._clear_pending_payload(tournament)
+        refreshed = self._tournament_repo.get()
+        if refreshed is None:
+            raise DomainError("Турнир не создан.")
+
+        pending = self._build_pending_from_engine()
+        self._store_pending_payload(refreshed, pending)
+        self._apply_preview_to_players(pending.games, pending.bye_player_id)
+        round_number = refreshed.current_round + 1
+        return PairingOutcome(
+            round_number=round_number,
+            games=tuple(self._preview_games_from_payload(pending.games)),
+            bye_player_id=pending.bye_player_id,
+            needs_confirmation=pending.needs_confirmation,
+            confirmation_reason=pending.confirmation_reason,
+        )
+
     def generate_next_round(
         self,
         tournament_id: int,
@@ -310,6 +336,16 @@ class PairingService:
             bye_player_id=bye_player_id,
             needs_confirmation=needs_confirmation,
             confirmation_reason=confirmation_reason,
+        )
+
+    def _clear_pending_payload(self, tournament: Tournament) -> None:
+        self._tournament_repo.update_status(
+            tournament.status,
+            prepared=tournament.prepared,
+            number_of_rounds=tournament.number_of_rounds,
+            current_round=tournament.current_round,
+            rules_text=tournament.rules_text,
+            pending_pairing_payload=None,
         )
 
     def _preview_games_from_payload(self, pairing_data: list[dict[str, Any]]) -> list[Game]:

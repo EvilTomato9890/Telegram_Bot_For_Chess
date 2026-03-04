@@ -6,6 +6,7 @@ from .exceptions import (
     CommandFormatError,
     DomainError,
     NotFoundError,
+    OrganizerConfirmationRequiredError,
     RoundsExhaustedError,
     StateError,
     ValidationError,
@@ -55,4 +56,5 @@ __all__ = [
     "StateError",
     "AccessDeniedError",
     "RoundsExhaustedError",
+    "OrganizerConfirmationRequiredError",
 ]

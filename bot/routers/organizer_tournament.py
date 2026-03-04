@@ -365,3 +365,18 @@ def register_tournament_handlers(router: Router, shared: OrganizerShared) -> Non
         top_lines = [f"{row.position}. {row.full_name} - {row.score}" for row in standings]
         await message.answer("Турнир завершен.\n" + "\n".join(top_lines))
 
+    @router.message(Command("force_finish_tournament"))
+    async def force_finish_tournament_handler(message: Message) -> None:
+        actor = shared.admin_check(message, "/force_finish_tournament")
+        parts = (message.text or "").split()
+        if len(parts) != 1:
+            raise DomainError("Формат: /force_finish_tournament")
+        tournament = shared.tournament_service.force_finish_tournament()
+        shared.log_ok(
+            actor,
+            "/force_finish_tournament",
+            "tournament:1",
+            {"status": tournament.status.value, "forced": True},
+        )
+        await message.answer("Турнир принудительно завершен (без обязательных проверок).")
+

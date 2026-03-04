@@ -21,9 +21,11 @@ def test_acl_registry_contains_new_admin_commands_only() -> None:
     acl = services["acl_service"]
 
     assert acl.can_execute(9001, "/prepare_tournament") is True
+    assert acl.can_execute(9001, "/force_finish_tournament") is True
     assert acl.can_execute(9001, "/tournament_status") is True
     assert acl.can_execute(9001, "/delete_player") is True
     assert acl.can_execute(9001, "/announce") is True
+    assert acl.can_execute(9002, "/force_finish_tournament") is False
     assert acl.can_execute(9001, "/prepare_turnament") is False
     assert acl.can_execute(9001, "/tournament_statuc") is False
 

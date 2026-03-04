@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from domain.dto import ApproveOutcome, ReportOutcome
-from domain.exceptions import DomainError
+from domain.exceptions import DomainError, OrganizerConfirmationRequiredError
 from domain.models import Game, RoundStatus, TournamentStatus
 from repositories import GameReportRepository, GameRepository, PlayerRepository, RoundRepository, TournamentRepository
 
@@ -79,7 +79,10 @@ class ResultService:
             self._game_repo.update(game)
             self._report_repo.delete_by_game(game_id)
             self._scoring_service.recalculate()
-            round_closed, round_number = self._close_round_if_needed(game.round_id)
+            round_closed, round_number = self._close_round_if_needed(
+                game.round_id,
+                changed_game_was_unresolved=True,
+            )
             next_round_hint = self._next_round_hint(round_number)
             return ReportOutcome(
                 game_id=game_id,
@@ -105,8 +108,14 @@ class ResultService:
             black_telegram_id=black_tg,
         )
 
-    def approve_result(self, game_id: int, raw_result: str) -> ApproveOutcome:
-        """Arbitrator/admin overrides game result for current round only."""
+    def approve_result(
+        self,
+        game_id: int,
+        raw_result: str,
+        *,
+        allow_prepared_override: bool = False,
+    ) -> ApproveOutcome:
+        """Arbitrator/admin overrides game result with guarded previous-round edits."""
 
         game = self._game_repo.get_by_id(game_id)
         if game is None:
@@ -120,6 +129,16 @@ class ResultService:
         if round_.number != tournament.current_round:
             raise DomainError("Изменять результат можно только в текущем туре до старта следующего.")
 
+        current_round = self._round_repo.get_current()
+        previous_round_edit = round_.status == RoundStatus.CLOSED and current_round is None
+        if round_.status != RoundStatus.ONGOING and not previous_round_edit:
+            raise DomainError("Изменять результат можно только в активном туре.")
+
+        pending_prepared = bool(tournament.pending_pairing_payload)
+        if previous_round_edit and pending_prepared and not allow_prepared_override:
+            raise OrganizerConfirmationRequiredError(game_id, raw_result)
+
+        was_unresolved = game.result is None
         result = self._scoring_service.parse_result_token(raw_result)
         game.result = result
         game.result_source = "arbiter"
@@ -128,7 +147,10 @@ class ResultService:
         self._report_repo.delete_by_game(game_id)
         self._scoring_service.recalculate()
 
-        round_closed, round_number = self._close_round_if_needed(game.round_id)
+        round_closed, round_number = self._close_round_if_needed(
+            game.round_id,
+            changed_game_was_unresolved=was_unresolved,
+        )
         white_tg, black_tg = self._resolve_player_telegram_ids(game)
         return ApproveOutcome(
             game_id=game_id,
@@ -139,6 +161,7 @@ class ResultService:
             round_closed=round_closed,
             round_number=round_number,
             next_round_hint=self._next_round_hint(round_number),
+            reseed_required=previous_round_edit and pending_prepared,
         )
 
     def _resolve_game_for_player(self, player_id: int) -> Game:
@@ -165,16 +188,19 @@ class ResultService:
             black_player.telegram_id if black_player is not None else None,
         )
 
-    def _close_round_if_needed(self, round_id: int) -> tuple[bool, int | None]:
+    def _close_round_if_needed(
+        self,
+        round_id: int,
+        *,
+        changed_game_was_unresolved: bool,
+    ) -> tuple[bool, int | None]:
         round_ = self._round_repo.get_by_id(round_id)
         if round_ is None:
             return (False, None)
+        if not changed_game_was_unresolved:
+            return (False, round_.number)
         games = self._game_repo.list_by_round(round_id)
         if games and all(game.result is not None for game in games):
-            if round_.status != RoundStatus.CLOSED:
-                round_.status = RoundStatus.CLOSED
-                round_.closed_at = datetime.now(UTC)
-                self._round_repo.update(round_)
             return (True, round_.number)
         return (False, round_.number)
 

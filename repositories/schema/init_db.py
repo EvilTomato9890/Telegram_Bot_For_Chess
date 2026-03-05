@@ -19,7 +19,6 @@ _REQUIRED_TABLES = {
     "game_reports",
     "tickets",
     "role_grants",
-    "undo_snapshots",
 }
 
 
@@ -98,5 +97,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
 

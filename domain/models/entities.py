@@ -109,18 +109,6 @@ class Ticket:
     closed_by_telegram_id: int | None = None
 
 
-@dataclass(slots=True)
-class UndoSnapshot:
-    """Serialized DB snapshot for admin undo."""
-
-    id: int | None
-    actor_telegram_id: int
-    action_name: str
-    snapshot_json: str
-    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    restored_at: datetime | None = None
-
-
 __all__ = [
     "Tournament",
     "Player",
@@ -129,5 +117,4 @@ __all__ = [
     "Game",
     "GameReport",
     "Ticket",
-    "UndoSnapshot",
 ]

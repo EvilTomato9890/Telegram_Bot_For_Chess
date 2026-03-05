@@ -73,10 +73,11 @@ class TournamentService:
             self._ticket_repo.clear_all(conn)
             self._player_repo.clear_all(conn)
             self._table_repo.clear_all(conn)
+            conn.execute("DELETE FROM role_grants")
             conn.execute(
                 """
                 DELETE FROM sqlite_sequence
-                WHERE name IN ('players', 'rounds', 'tables', 'games', 'game_reports', 'tickets', 'role_grants', 'undo_snapshots')
+                WHERE name IN ('players', 'rounds', 'tables', 'games', 'game_reports', 'tickets', 'role_grants')
                 """
             )
 
@@ -292,6 +293,28 @@ class TournamentService:
             "players_disqualified": self._count_disqualified_players(),
             "enough_tables_for_next_round": len(tables) >= required_tables,
         }
+
+    def invalidate_pending_pairings(self) -> bool:
+        """Drop prepared next-round payload and clear preview placements."""
+
+        tournament = self.ensure_tournament()
+        if tournament.pending_pairing_payload is None:
+            return False
+        self._tournament_repo.update_status(
+            tournament.status,
+            prepared=tournament.prepared,
+            number_of_rounds=tournament.number_of_rounds,
+            current_round=tournament.current_round,
+            rules_text=tournament.rules_text,
+            pending_pairing_payload=None,
+        )
+        for player in self._player_repo.list_all():
+            if player.current_board is None and not (player.seat_hint or "").strip():
+                continue
+            player.current_board = None
+            player.seat_hint = None
+            self._player_repo.update(player)
+        return True
 
     @staticmethod
     def round_recommendation(players_count: int) -> int:

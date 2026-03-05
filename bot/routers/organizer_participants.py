@@ -18,6 +18,7 @@ def register_participant_handlers(router: Router, shared: OrganizerShared) -> No
     @router.message(Command("add_player"))
     async def add_player_handler(message: Message) -> None:
         actor = shared.admin_check(message, "/add_player")
+        pending_was_prepared = shared.tournament_service.ensure_tournament().pending_pairing_payload is not None
         shared.registration_service.validate_admin_add_precheck()
         parts = (message.text or "").split(maxsplit=3)
         if len(parts) < 4:
@@ -68,11 +69,15 @@ def register_participant_handlers(router: Router, shared: OrganizerShared) -> No
             rating=rating,
         )
         shared.log_ok(actor, "/add_player", f"player:{player.id}", {"telegram_id": player.telegram_id, "rating": player.rating})
-        await message.answer(f"Игрок добавлен: #{player.id} {player.full_name}, рейтинг {player.rating}.")
+        response = f"Игрок добавлен: #{player.id} {player.full_name}, рейтинг {player.rating}."
+        if pending_was_prepared:
+            response += " Подготовленные пары сброшены, переподготовьте тур перед запуском."
+        await message.answer(response)
 
     @router.message(Command("delete_player"))
     async def delete_player_handler(message: Message) -> None:
         actor = shared.admin_check(message, "/delete_player")
+        pending_was_prepared = shared.tournament_service.ensure_tournament().pending_pairing_payload is not None
         parts = (message.text or "").split()
         if len(parts) != 2:
             raise DomainError("Формат: /delete_player <player_id>")
@@ -84,11 +89,15 @@ def register_participant_handlers(router: Router, shared: OrganizerShared) -> No
             raise DomainError("Игрок не найден.")
         deleted = shared.registration_service.delete_player_by_admin(player_id)
         shared.log_ok(actor, "/delete_player", f"player:{player_id}", {"deleted": True, "full_name": deleted.full_name})
-        await message.answer(f"Игрок удален: #{player_id} {deleted.full_name}.")
+        response = f"Игрок удален: #{player_id} {deleted.full_name}."
+        if pending_was_prepared:
+            response += " Подготовленные пары сброшены, переподготовьте тур перед запуском."
+        await message.answer(response)
 
     @router.message(Command("disqualify"))
     async def disqualify_handler(message: Message) -> None:
         actor = shared.admin_check(message, "/disqualify")
+        pending_was_prepared = shared.tournament_service.ensure_tournament().pending_pairing_payload is not None
         parts = (message.text or "").split()
         if len(parts) != 2:
             raise DomainError("Формат: /disqualify <player_id>")
@@ -100,7 +109,10 @@ def register_participant_handlers(router: Router, shared: OrganizerShared) -> No
             raise DomainError("Игрок уже дисквалифицирован.")
         updated = shared.registration_service.disqualify(player_id)
         shared.log_ok(actor, "/disqualify", f"player:{updated.id}", {"status": updated.status.value})
-        await message.answer(f"Игрок {updated.full_name} дисквалифицирован.")
+        response = f"Игрок {updated.full_name} дисквалифицирован."
+        if pending_was_prepared:
+            response += " Подготовленные пары сброшены, выполните /prepare_round."
+        await message.answer(response)
 
     @router.message(Command("announce"))
     async def announce_handler(message: Message) -> None:
@@ -115,6 +127,7 @@ def register_participant_handlers(router: Router, shared: OrganizerShared) -> No
     @router.message(Command("set_player_rating"))
     async def set_player_rating_handler(message: Message) -> None:
         actor = shared.admin_check(message, "/set_player_rating")
+        pending_was_prepared = shared.tournament_service.ensure_tournament().pending_pairing_payload is not None
         parts = (message.text or "").split()
         if len(parts) != 3:
             raise DomainError("Формат: /set_player_rating <player_id> <rating>")
@@ -133,4 +146,7 @@ def register_participant_handlers(router: Router, shared: OrganizerShared) -> No
             return
         updated = shared.registration_service.set_rating(player_id, rating)
         shared.log_ok(actor, "/set_player_rating", f"player:{updated.id}", {"rating": updated.rating})
-        await message.answer(f"Новый рейтинг игрока {updated.full_name}: {updated.rating}")
+        response = f"Новый рейтинг игрока {updated.full_name}: {updated.rating}"
+        if pending_was_prepared:
+            response += ". Подготовленные пары сброшены, переподготовьте тур перед запуском."
+        await message.answer(response)

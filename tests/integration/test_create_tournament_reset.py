@@ -1,4 +1,4 @@
-﻿from domain.models import Table
+from domain.models import Role, Table
 from tests.utils import build_db_url, build_services
 
 
@@ -22,3 +22,15 @@ def test_create_tournament_resets_autoincrement_for_players() -> None:
     p3 = registration_service.register(103, "u3", "C", 1300)
     assert p3.id == 1
 
+
+def test_create_tournament_resets_runtime_role_grants() -> None:
+    services = build_services(build_db_url("create_reset_roles"))
+    tournament_service = services["tournament_service"]
+    role_repo = services["role_repo"]
+    acl_service = services["acl_service"]
+
+    role_repo.append(777, Role.ARBITRATOR, "grant")
+    assert Role.ARBITRATOR in acl_service.resolve_roles(777)
+
+    tournament_service.create_tournament()
+    assert Role.ARBITRATOR not in acl_service.resolve_roles(777)

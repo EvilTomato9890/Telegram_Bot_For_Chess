@@ -26,7 +26,6 @@ from .models import (
     TicketType,
     Tournament,
     TournamentStatus,
-    UndoSnapshot,
 )
 
 __all__ = [
@@ -43,7 +42,6 @@ __all__ = [
     "Ticket",
     "TicketStatus",
     "TicketType",
-    "UndoSnapshot",
     "Role",
     "CommandSpec",
     "HelpView",

@@ -1,6 +1,6 @@
 """Domain model exports."""
 
-from .entities import Game, GameReport, Player, Round, Table, Ticket, Tournament, UndoSnapshot
+from .entities import Game, GameReport, Player, Round, Table, Ticket, Tournament
 from .enums import (
     GameResult,
     PlayerStatus,
@@ -19,7 +19,6 @@ __all__ = [
     "Game",
     "GameReport",
     "Ticket",
-    "UndoSnapshot",
     "Role",
     "TournamentStatus",
     "RoundStatus",

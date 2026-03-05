@@ -91,15 +91,6 @@ CREATE TABLE role_grants (
     created_at TEXT NOT NULL
 );
 
-CREATE TABLE undo_snapshots (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    actor_telegram_id INTEGER NOT NULL,
-    action_name TEXT NOT NULL,
-    snapshot_json TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    restored_at TEXT
-);
-
 CREATE INDEX idx_players_telegram_id ON players(telegram_id);
 CREATE INDEX idx_games_round_id ON games(round_id);
 CREATE INDEX idx_tickets_status_assignee ON tickets(status, assignee_telegram_id);

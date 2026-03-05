@@ -42,14 +42,20 @@ class PlayerRepository:
             player.created_at.isoformat(),
         )
         if connection is not None:
-            cursor = connection.execute(sql, params)
+            try:
+                cursor = connection.execute(sql, params)
+            except sqlite3.IntegrityError as exc:
+                self._raise_insert_integrity_error(exc)
             row = connection.execute("SELECT * FROM players WHERE id = ?", (cursor.lastrowid,)).fetchone()
             mapped = self._map_row(row)
             if mapped is None:
                 raise DomainError("failed to insert player")
             return mapped
         with self._database.transaction() as conn:
-            cursor = conn.execute(sql, params)
+            try:
+                cursor = conn.execute(sql, params)
+            except sqlite3.IntegrityError as exc:
+                self._raise_insert_integrity_error(exc)
             row = conn.execute("SELECT * FROM players WHERE id = ?", (cursor.lastrowid,)).fetchone()
             mapped = self._map_row(row)
             if mapped is None:
@@ -153,6 +159,13 @@ class PlayerRepository:
             return cursor.rowcount > 0
 
     @staticmethod
+    def _raise_insert_integrity_error(exc: sqlite3.IntegrityError) -> None:
+        lowered = str(exc).lower()
+        if "players.telegram_id" in lowered:
+            raise DomainError("Игрок с таким telegram_id уже существует.") from exc
+        raise DomainError("Не удалось добавить игрока из-за ограничения целостности данных.") from exc
+
+    @staticmethod
     def _map_row(row: sqlite3.Row | None) -> Player | None:
         if row is None:
             return None
@@ -175,5 +188,4 @@ class PlayerRepository:
             seat_hint=row["seat_hint"],
             created_at=created_at,
         )
-
 

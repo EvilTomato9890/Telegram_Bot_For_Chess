@@ -7,7 +7,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from domain.exceptions import DomainError
-from domain.models import Table
+from domain.models import Table, TournamentStatus
 
 from .organizer_shared import OrganizerShared
 
@@ -46,8 +46,12 @@ def register_table_handlers(router: Router, shared: OrganizerShared) -> None:
             location = "Локация не указана"
 
         shared.table_repo.add(Table(id=None, number=number, location=location, place_hint=None))
+        pending_invalidated = shared.tournament_service.invalidate_pending_pairings()
         shared.log_ok(actor, "/add_table", f"table:{number}", {"location": location})
-        await message.answer(f"Стол {number} добавлен.")
+        response = f"Стол {number} добавлен."
+        if pending_invalidated:
+            response += " Подготовленные пары сброшены, переподготовьте тур перед запуском."
+        await message.answer(response)
 
     @router.message(Command("remove_table"))
     async def remove_table_handler(message: Message) -> None:
@@ -59,17 +63,17 @@ def register_table_handlers(router: Router, shared: OrganizerShared) -> None:
 
         if shared.table_repo.get_by_number(number) is None:
             raise DomainError("Стол не найден.")
-
-        current_round = shared.round_repo.get_current()
-        if current_round is not None and current_round.id is not None:
-            for game in shared.game_repo.list_by_round(current_round.id):
-                if game.board_number == number:
-                    raise DomainError("Нельзя удалить стол: он используется в текущем туре.")
+        tournament = shared.tournament_service.ensure_tournament()
+        if tournament.status in {TournamentStatus.ONGOING, TournamentStatus.FINISHED}:
+            raise DomainError("Удалять столы можно только до старта турнира.")
 
         removed = shared.table_repo.remove_by_number(number)
         if not removed:
             raise DomainError("Стол не найден.")
+        pending_invalidated = shared.tournament_service.invalidate_pending_pairings()
         shared.log_ok(actor, "/remove_table", f"table:{number}", {"removed": True})
-        await message.answer(f"Стол {number} удален.")
-
+        response = f"Стол {number} удален."
+        if pending_invalidated:
+            response += " Подготовленные пары сброшены, переподготовьте тур перед запуском."
+        await message.answer(response)
 

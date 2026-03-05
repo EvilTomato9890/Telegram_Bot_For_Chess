@@ -8,7 +8,6 @@ from .round_repo import RoundRepository
 from .table_repo import TableRepository
 from .ticket_repo import TicketRepository
 from .tournament_repo import TournamentRepository
-from .undo_repo import UndoRepository
 
 __all__ = [
     "TournamentRepository",
@@ -18,7 +17,5 @@ __all__ = [
     "TableRepository",
     "TicketRepository",
     "GameReportRepository",
-    "UndoRepository",
     "RoleGrantRepository",
 ]
-

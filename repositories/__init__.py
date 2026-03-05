@@ -12,7 +12,6 @@ from .sqlite import (
     TableRepository,
     TicketRepository,
     TournamentRepository,
-    UndoRepository,
 )
 
 
@@ -33,6 +32,5 @@ __all__ = [
     "TableRepository",
     "TicketRepository",
     "GameReportRepository",
-    "UndoRepository",
     "RoleGrantRepository",
 ]

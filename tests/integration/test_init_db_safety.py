@@ -60,5 +60,3 @@ def test_init_db_rebuild_flag_allows_recovery() -> None:
     finally:
         connection.close()
     assert "role_grants" in tables
-    assert "undo_snapshots" in tables
-

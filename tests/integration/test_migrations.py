@@ -21,7 +21,6 @@ def test_migrations_create_required_tables() -> None:
         "game_reports",
         "tickets",
         "role_grants",
-        "undo_snapshots",
     }.issubset(names)
 
 
@@ -34,5 +33,8 @@ def test_migrations_are_idempotent() -> None:
         rows = connection.execute("SELECT filename FROM schema_migrations ORDER BY filename").fetchall()
     finally:
         connection.close()
-    assert rows == [("001_initial_schema.sql",), ("002_reports_undo_indexes.sql",)]
-
+    assert rows == [
+        ("001_initial_schema.sql",),
+        ("002_reports_undo_indexes.sql",),
+        ("003_drop_undo_snapshots.sql",),
+    ]

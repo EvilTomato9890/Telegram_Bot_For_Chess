@@ -81,7 +81,9 @@ class RegistrationService:
         if player is None:
             raise DomainError("Игрок не найден.")
         player.status = PlayerStatus.DISQUALIFIED
-        return self._player_repo.update(player)
+        updated = self._player_repo.update(player)
+        self._invalidate_pending_pairings()
+        return updated
 
     def delete_player_by_admin(self, player_id: int) -> Player:
         """Delete player from roster before tournament start."""
@@ -94,6 +96,7 @@ class RegistrationService:
             raise DomainError("Игрок не найден.")
         if not self._player_repo.delete_by_id(player_id):
             raise DomainError("Не удалось удалить игрока.")
+        self._invalidate_pending_pairings()
         return player
 
     def set_rating(self, player_id: int, rating: int) -> Player:
@@ -108,7 +111,9 @@ class RegistrationService:
         if rating < 0:
             raise DomainError("Рейтинг не может быть отрицательным.")
         player.rating = rating
-        return self._player_repo.update(player)
+        updated = self._player_repo.update(player)
+        self._invalidate_pending_pairings()
+        return updated
 
     def all_players(self) -> list[Player]:
         """Return complete player list."""
@@ -146,6 +151,25 @@ class RegistrationService:
 
     def _count_active_players(self) -> int:
         return sum(1 for player in self._player_repo.list_all() if player.status == PlayerStatus.ACTIVE)
+
+    def _invalidate_pending_pairings(self) -> None:
+        tournament = self._tournament_repo.get()
+        if tournament is None or tournament.pending_pairing_payload is None:
+            return
+        self._tournament_repo.update_status(
+            tournament.status,
+            prepared=tournament.prepared,
+            number_of_rounds=tournament.number_of_rounds,
+            current_round=tournament.current_round,
+            rules_text=tournament.rules_text,
+            pending_pairing_payload=None,
+        )
+        for player in self._player_repo.list_all():
+            if player.current_board is None and not (player.seat_hint or "").strip():
+                continue
+            player.current_board = None
+            player.seat_hint = None
+            self._player_repo.update(player)
 
     def _require_tournament(self) -> Tournament:
         tournament = self._tournament_repo.get()

@@ -72,10 +72,9 @@ class PairingService:
         self._validate_can_generate(tournament)
         round_number = tournament.current_round + 1
 
-        pending = self._load_pending_payload(tournament)
-        if pending is None:
-            pending = self._build_pending_from_engine()
-            self._store_pending_payload(tournament, pending)
+        # Always regenerate preview on every /prepare_round call.
+        pending = self._build_pending_from_engine()
+        self._store_pending_payload(tournament, pending)
 
         self._apply_preview_to_players(pending.games, pending.bye_player_id)
         return PairingOutcome(
@@ -496,5 +495,4 @@ class PairingService:
         player.current_board = board_number
         player.seat_hint = f"Стол {board_number}, цвет: {color}, локация: {location}"
         self._player_repo.update(player)
-
 

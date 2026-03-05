@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 
 from domain.models import Game
 
@@ -47,12 +46,3 @@ class ApproveOutcome:
     round_number: int | None = None
     next_round_hint: str | None = None
     reseed_required: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class UndoResult:
-    """Result payload for one applied admin undo operation."""
-
-    snapshot_id: int
-    undone_action: str
-    restored_at: datetime

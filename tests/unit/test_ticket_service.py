@@ -1,6 +1,7 @@
-﻿from domain.models import Role, TicketStatus, TicketType
+﻿import pytest
+
+from domain.models import Role, TicketStatus, TicketType
 from tests.utils import build_db_url, build_services
-import pytest
 
 
 def test_ticket_service_assigns_least_loaded_assignee() -> None:

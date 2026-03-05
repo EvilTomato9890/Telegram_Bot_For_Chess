@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from domain.exceptions import DomainError
-
-from datetime import UTC, datetime
 import sqlite3
+from datetime import UTC, datetime
 
+from domain.exceptions import DomainError
 from domain.models import Game, GameResult
 from infra.db import Database
 

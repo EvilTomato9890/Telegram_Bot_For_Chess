@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-from domain.exceptions import DomainError
-
-from datetime import UTC, datetime
 import sqlite3
+from contextlib import contextmanager
+from datetime import UTC, datetime
 from typing import Iterator
 
+from domain.exceptions import DomainError
 from domain.models import Ticket, TicketStatus, TicketType
 from infra.db import Database
 
@@ -30,7 +29,17 @@ class TicketRepository:
 
     def add(self, ticket: Ticket, connection: sqlite3.Connection | None = None) -> Ticket:
         sql = """
-            INSERT INTO tickets(type, author_telegram_id, status, assignee_telegram_id, game_id, description, opened_at, closed_at, closed_by_telegram_id)
+            INSERT INTO tickets(
+                type,
+                author_telegram_id,
+                status,
+                assignee_telegram_id,
+                game_id,
+                description,
+                opened_at,
+                closed_at,
+                closed_by_telegram_id
+            )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         params = (
@@ -197,5 +206,4 @@ class TicketRepository:
             closed_at=parse_iso(row["closed_at"]),
             closed_by_telegram_id=row["closed_by_telegram_id"],
         )
-
 

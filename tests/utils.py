@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 from typing import TypedDict
-import uuid
 
 from infra import Database
 from infra.logging import setup_logging

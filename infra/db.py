@@ -6,12 +6,12 @@ focused on SQL and mapping only.
 
 from __future__ import annotations
 
-from domain.exceptions import DomainError
-
+import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-import sqlite3
 from typing import Iterator
+
+from domain.exceptions import DomainError
 
 
 class Database:

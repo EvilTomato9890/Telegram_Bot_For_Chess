@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import sqlite3
+from pathlib import Path
 
 
 def apply_migrations(db_path: str | Path, migrations_dir: str | Path | None = None) -> None:

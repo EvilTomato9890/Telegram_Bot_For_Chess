@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import replace
 from datetime import UTC, datetime
-import math
 
 from domain.exceptions import DomainError
 from domain.models import PlayerStatus, RoundStatus, Tournament, TournamentStatus

@@ -21,6 +21,7 @@ from services import (
     TournamentService,
 )
 
+
 @dataclass(slots=True, frozen=True)
 class OrganizerShared:
     """Helper facade reused by split admin router modules."""

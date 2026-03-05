@@ -3,11 +3,11 @@ pythonpath = ["."]
 
 [tool.mypy]
 strict = true
-python_version = "3.11"
-files = ["handlers", "keyboards", "tests"]
+python_version = "3.13"
+files = ["bot", "domain", "infra", "repositories", "services", "keyboards", "tests", "main.py"]
 
 [tool.ruff]
-line-length = 100
+line-length = 140
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]

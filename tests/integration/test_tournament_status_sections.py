@@ -34,7 +34,7 @@ def test_tournament_status_shows_active_and_disqualified_sections() -> None:
     table_repo = services["table_repo"]
 
     tournament_service.create_tournament()
-    table_repo.add(Table(id=None, number=1, location="A", place_hint="Сѓ РѕРєРЅР°"))
+    table_repo.add(Table(id=None, number=1, location="A", place_hint="у окна"))
     tournament_service.open_registration()
     p1 = registration.register(7001, "u1", "Active User", 1500)
     p2 = registration.register(7002, "u2", "DQ User", 1400)

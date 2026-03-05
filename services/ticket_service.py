@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import replace
 from datetime import UTC, datetime
-import sqlite3
 
 from domain.exceptions import DomainError
 from domain.models import Role, Ticket, TicketStatus, TicketType

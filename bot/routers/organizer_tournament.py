@@ -207,7 +207,10 @@ def register_tournament_handlers(router: Router, shared: OrganizerShared) -> Non
             if standings:
                 for row in standings:
                     lines.append(
-                        f"- {row.position}. {row.full_name} | score={row.score} | BH={row.buchholz} | MBH={row.median_buchholz} | SB={row.sonneborn_berger}"
+                        (
+                            f"- {row.position}. {row.full_name} | score={row.score} | "
+                            f"BH={row.buchholz} | MBH={row.median_buchholz} | SB={row.sonneborn_berger}"
+                        )
                     )
             else:
                 lines.append("- нет данных")
@@ -379,4 +382,3 @@ def register_tournament_handlers(router: Router, shared: OrganizerShared) -> Non
             {"status": tournament.status.value, "forced": True},
         )
         await message.answer("Турнир принудительно завершен (без обязательных проверок).")
-

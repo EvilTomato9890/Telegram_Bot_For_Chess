@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
 import logging
+from collections.abc import Callable, Iterable
 
 from aiogram import Bot
 

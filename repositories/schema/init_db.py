@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
+import argparse
+import sqlite3
+from pathlib import Path
+
 from domain.exceptions import DomainError
 
-import argparse
-from pathlib import Path
-import sqlite3
-
 from .migrations import apply_migrations
-
 
 _REQUIRED_TABLES = {
     "tournaments",

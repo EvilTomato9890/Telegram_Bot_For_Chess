@@ -9,7 +9,6 @@ from domain.exceptions import DomainError
 from domain.models import GameResult, Player
 from repositories import GameRepository, PlayerRepository, RoundRepository
 
-
 RESULT_ALIASES: dict[str, GameResult] = {
     "white": GameResult.WHITE_WIN,
     "белые": GameResult.WHITE_WIN,

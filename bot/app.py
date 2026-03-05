@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 
 from aiogram import Bot, Dispatcher
 from aiogram.exceptions import TelegramUnauthorizedError
 from aiogram.types.error_event import ErrorEvent
+
 from bot.context import RouterContext
-from domain.exceptions import DomainError
 from bot.routers import (
     build_arbitrator_router,
     build_common_router,
@@ -19,6 +19,7 @@ from bot.routers import (
     build_organizer_router,
     build_player_router,
 )
+from domain.exceptions import DomainError
 from infra import AppConfig, AuditLogger, Database, load_config, setup_logging
 from repositories import (
     GameReportRepository,

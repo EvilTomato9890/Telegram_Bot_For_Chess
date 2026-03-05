@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from domain.exceptions import DomainError
-
 import sqlite3
 
+from domain.exceptions import DomainError
 from domain.models import Table
 from infra.db import Database
 

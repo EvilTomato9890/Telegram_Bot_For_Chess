@@ -75,11 +75,10 @@ def test_announce_sends_message_to_all_registered_players() -> None:
     router = build_organizer_router(context)
     handler = next(h.callback for h in router.message.handlers if h.callback.__name__ == "announce_handler")
 
-    message = _StubMessage(9001, "/announce РўРµСЃС‚РѕРІРѕРµ РѕР±СЉСЏРІР»РµРЅРёРµ")
+    message = _StubMessage(9001, "/announce Тестовое объявление")
     asyncio.run(handler(message))
 
     assert message.answers
     sent_ids = {chat_id for chat_id, _ in message.bot.sent}
     assert sent_ids == {8101, 8102}
-
 

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 import json
+from collections import defaultdict
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command
